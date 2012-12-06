@@ -25,18 +25,17 @@ data Barrier = Barrier { barrCount :: TVar Int
 
 
 
+generateState :: Int -> Int -> Int -> Double -> IO State
 generateState numWorkers outerIters innerIters temp = do
   cityMap@(CityMap numCities _) <- readInput
 
-  let cities = map mkCity nums
-      nums   = [0..numCities - 1]
+  let nums   = [0..numCities - 1]
 
   stop <- newTVarIO False
   count <- newTVarIO 0
   done <- newTVarIO 0
 
   route <- atomically $ do
-    let mkAdjCity i = AdjCity Nothing Nothing i (mkCity i)
     route <- newArray_ (0, numCities - 1)
     mapM_ (\i -> writeArray route i (mkCity i)) nums
     return route
@@ -51,10 +50,11 @@ generateState numWorkers outerIters innerIters temp = do
                  , stRoute      = route
                  }  
 
+printState :: State -> IO ()
 printState state = do
   route <- atomically $ getElems (stRoute state)
   let
-    dist !acc prev [] = acc
+    dist !acc    _ [] = acc
     dist !acc prev (next:nexts) = 
       dist (acc + interCityDist (stCityMap state) prev next) next nexts
   print (dist 0 (head route) (tail route))
