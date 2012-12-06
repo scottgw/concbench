@@ -6,7 +6,6 @@ import Control.Concurrent.STM
 import Control.Monad
 
 import Data.Array.MArray
--- import Data.List
 
 import System.Random (StdGen, random, randomR, mkStdGen)
 import System.Environment
@@ -136,12 +135,13 @@ getRandomAdjCity gen route = do
   (l,u) <- atomically $ getBounds route
   let (i, gen') = randomR (l, u) gen
   c <- atomically $ readArray route i
+  let readAdj j = Just `fmap` (atomically $ readArray route j)
   prev <- if i <= l
           then return Nothing
-          else Just `fmap` (atomically $ readArray route (i-1))
+          else readAdj (i-1)
   next <- if i >= u
           then return Nothing
-          else Just `fmap` (atomically $ readArray route (i+1))
+          else readAdj (i+1)
   return (gen', AdjCity prev next i c)
 
 -- Important property: the before distance should never be InfDist.
@@ -150,8 +150,8 @@ calcDelta :: CityMap -> AdjCity -> AdjCity -> CityDist
 calcDelta cityMap a b = distAfter - distBefore
   where
     dist (AdjCity prev post _ city) = 
-      maybe 0 (interCityDist cityMap city) prev +
-      maybe 0 (interCityDist cityMap city) post  
+      let dist' = maybe 0 (interCityDist cityMap city)
+      in dist' prev + dist' post  
 
     swapPos x y = x { adjPrev = adjPrev y
                     , adjNext = adjNext y
@@ -171,25 +171,15 @@ data Accept = Accept GoodOrBad | Deny deriving Show
 update :: Route -> Int -> City -> STM ()
 update route old city = writeArray route old city
 
--- noDoubles :: Route -> String -> STM ()
--- noDoubles route str = do
---   es <- getElems route
---   let es' = map cityId es
---       inv = sort (nub es') == sort es'
---   when (not inv) (error $ "swapcities: doubles " ++ show es ++ " -- " ++ str)
-
-
 -- | Change cities, update the cities on either side of the swapped cities
 -- to indicate their new adjacent neighbour.
 swapCities :: State -> Int -> Int -> IO ()
 swapCities state a b = atomically $ do
   let route = stRoute state
-  -- noDoubles route "start"
   aCity <- readArray route a
   bCity <- readArray route b
   update route a bCity
   update route b aCity
-  -- noDoubles route ("end " ++ show a ++ " with " ++ show b)
   
 decide :: StdGen -> CityDist -> Double -> IO (StdGen, Accept)
 decide gen deltaDist t 
