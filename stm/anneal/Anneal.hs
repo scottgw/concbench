@@ -1,21 +1,17 @@
 {-# LANGUAGE ScopedTypeVariables, TupleSections, BangPatterns #-}
 module Main (main, genInput) where
 
-
-import Control.Concurrent
 import Control.Concurrent.Async
 import Control.Concurrent.STM
-import Control.Exception
 import Control.Monad
 
-import Data.Serialize
+import Data.Binary
 
-import Data.Array
 import Data.Array.MArray
-import Data.Array.IO
 import qualified Data.ByteString as BS
 import Data.List
-import Data.Vector.Cereal
+
+import Data.Vector.Binary
 import qualified Data.Vector.Unboxed as V
 import qualified Data.Vector.Unboxed.Mutable as V
 import Data.Vector.Unboxed (Vector)
@@ -23,13 +19,32 @@ import Data.Vector.Unboxed (Vector)
 import System.Random
 import System.Environment
 
+main = do
+  nArg:outerIterArg:innerIterArg:tempArg:_ <- getArgs
+  let n = read nArg
+      innerIters = read innerIterArg
+      outerIters = read outerIterArg
+      temp = read tempArg
+
+  state <- generateState n outerIters innerIters temp
+  printState state
+  mapConcurrently (threadLoop state) [1..n]
+  
+  -- threadLoop state
+  printState state
+  return ()
+
+
 
 newCityMap n maxDist = do
   cityMapM <- V.new (n*n)
   
   let loop i
         | i == n*n = return ()
-        | otherwise = randomRIO (1,maxDist) >>= V.write cityMapM i >> loop (i+1)
+        | otherwise = do
+            d <- randomRIO (1,maxDist)
+            V.write cityMapM i d -- asymmetric distances!
+            loop (i+1)
   loop 0
   cityMap <- V.unsafeFreeze cityMapM
   return (CityMap n cityMap)
@@ -38,23 +53,13 @@ inputFile = "anneal.in"
 
 genInput n maxDist = do
   cityMap <- newCityMap n maxDist
-  BS.writeFile inputFile (encode cityMap)
+  encodeFile inputFile cityMap
 
-readInput :: IO (Either String CityMap)
-readInput = decode `fmap` BS.readFile inputFile
-
-main = do
-  arg:_ <- getArgs
-  let n = read arg
-  state <- generateState n
-  printState state
-  mapConcurrently (threadLoop state) [1..n]
-  -- threadLoop state
-  printState state
-  return ()
+readInput :: IO CityMap
+readInput = decodeFile inputFile
 
 printState state = do
-  route <- map adjCity `fmap` (atomically $ getElems (stRoute state))
+  route <- atomically $ getElems (stRoute state)
   let
     dist !acc prev [] = acc
     dist !acc prev (next:nexts) = 
@@ -62,35 +67,40 @@ printState state = do
   print (dist 0 (head route) (tail route))
   print (take 20 $ map cityId route)
 
--- Per thread work
+--
+-- Thread worker
+--
+  
 threadLoop :: State -> -- ^ Common state
               Int   -> -- ^ Random seed
               IO ()
-threadLoop state seed = loop 0 (-1) initialTemp 0 (mkStdGen seed)
+threadLoop state seed = 
+  loop 0 (-1) (stInitTemp state) 0 (mkStdGen seed)
   where 
     loop good bad t i gen = do
       continue <- keepGoing state i good bad
       when continue $ do
-        (gen', good', bad') <- threadInnerLoop state t 0 0 numInnerIterations gen
+        (gen', cityA) <- getRandomAdjCity gen (stRoute state)
+        (gen'', good', bad') <- threadInnerLoop state cityA t 0 0 (stInnerIters state) gen'
         barrierWait state
-        loop good' bad' (cool t) (i + 1) gen'
+        loop good' bad' (cool t) (i + 1) gen''
 
 
 threadInnerLoop :: State  ->     -- ^ Common state
+                   AdjCity   ->     -- ^ Last city swapped
                    Double ->     -- ^ Temperature 't'
                    Int    ->     -- ^ Number of good decisions
                    Int    ->     -- ^ Number of bad decisions
                    Int    ->     -- ^ Iteration countdown
                    StdGen ->     -- ^ RNG
                    IO (StdGen, Int, Int) -- ^ Final good and bad counts
-threadInnerLoop state t good bad 0 gen = return (gen, good, bad)
-threadInnerLoop state t good bad i gen = do
+threadInnerLoop state cityA t good bad 0 gen = return (gen, good, bad)
+threadInnerLoop state cityA t good bad i gen = do
   let route = stRoute state
-  (gen', a) <- getRandomCity gen route
-  (gen'', b) <- getRandomCity gen' route
+  (gen', cityB) <- getRandomAdjCity gen route
   
-  let delta = calcDelta (stCityMap state) a b
-  (gen''', decision) <- decide gen'' state delta t
+  let delta = calcDelta (stCityMap state) cityA cityB
+  (gen'', decision) <- decide gen' state delta t
   -- print (delta, decision) 
   let bump Good = (good + 1, bad)
       bump Bad  = (good, bad + 1)
@@ -98,14 +108,11 @@ threadInnerLoop state t good bad i gen = do
   case decision of
     Accept goodOrBad -> do
       let (good', bad') = bump goodOrBad
-      swapCities state (adjRouteIdx a) (adjRouteIdx b)
-      threadInnerLoop state t good' bad' (i-1) gen'''
-    Deny        -> threadInnerLoop state t good bad (i-1) gen'''
+      swapCities state (adjRouteIdx cityA) (adjRouteIdx cityB)
+      threadInnerLoop state cityB t good' bad' (i-1) gen''
+    Deny        -> threadInnerLoop state cityB t good bad (i-1) gen''
  
-numInnerIterations = 40
 
-initialTemp :: Double
-initialTemp = 500.0
 
 cool :: Double -> Double
 cool t = t / 1.5
@@ -114,14 +121,17 @@ cool t = t / 1.5
 -- State information 
 data State = 
   State { stCityMap    :: CityMap
+        , stInitTemp   :: Double
+        , stInnerIters :: Int
         , stBarrier    :: Barrier
+        , stMaxSteps   :: Maybe Int
         , stNumWorkers :: Int
         , stStop       :: TVar Bool
         , stRoute      :: Route
         }
 
-generateState numWorkers = do
-  Right (cityMap@(CityMap numCities _)) <- readInput
+generateState numWorkers outerIters innerIters temp = do
+  cityMap@(CityMap numCities _) <- readInput
 
   let cities = map mkCity nums
       nums   = [0..numCities - 1]
@@ -133,31 +143,18 @@ generateState numWorkers = do
   route <- atomically $ do
     let mkAdjCity i = AdjCity Nothing Nothing i (mkCity i)
     route <- newArray_ (0, numCities - 1)
-    mapM_ (\i -> writeArray route i (mkAdjCity i)) nums
-    mapM_ (\i -> update route i (mkCity i)) nums
+    mapM_ (\i -> writeArray route i (mkCity i)) nums
     return route
 
   return $ State { stCityMap    = cityMap
                  , stBarrier    = Barrier count done
+                 , stInnerIters = innerIters
+                 , stInitTemp   = temp
+                 , stMaxSteps   = Just outerIters
                  , stNumWorkers = numWorkers
                  , stStop       = stop
                  , stRoute      = route
-                 }
--- -- Random operations
--- stateRandom :: Random a =>  -> IO a
--- stateRandom state = atomically $ do
---   !gen <- readTVar (stGen state)
---   let (!v, !gen') = random gen
---   writeTVar (stGen state) gen'
---   return v
-
--- stateRandomR :: Random a => State -> (a, a) -> IO a
--- stateRandomR state range = atomically $ do
---   !gen <- readTVar (stGen state)
---   let (!v, !gen') = randomR range  gen
---   writeTVar (stGen state) gen'
---   return v
-  
+                 }  
 
 --  
 -- City and map related functions and data
@@ -165,7 +162,7 @@ generateState numWorkers = do
   
 adjCityId = cityId . adjCity
 mkCity i = City i (show i)
-type Route = TArray Int AdjCity
+type Route = TArray Int City
 
 data AdjCity = AdjCity { adjPrev :: Maybe City
                        , adjNext :: Maybe City
@@ -179,7 +176,7 @@ data City = City { cityId :: Int
 
 data CityMap = CityMap !Int !(Vector CityDist) deriving (Read, Show)
 
-instance Serialize CityMap where
+instance Binary CityMap where
   get = do
     !n <- get
     !v <- get
@@ -198,12 +195,18 @@ interCityDist (CityMap n cityMap) a b = cityMap V.! (cityId a * n + cityId b)
 -- Thread helper functions
 --
 
-getRandomCity :: StdGen -> Route -> IO (StdGen, AdjCity)
-getRandomCity gen route = do
+getRandomAdjCity :: StdGen -> Route -> IO (StdGen, AdjCity)
+getRandomAdjCity gen route = do
   (l,u) <- atomically $ getBounds route
   let (i, gen') = randomR (l, u) gen
   c <- atomically $ readArray route i
-  return (gen', c)
+  prev <- if i <= l
+          then return Nothing
+          else Just `fmap` (atomically $ readArray route (i-1))
+  next <- if i >= u
+          then return Nothing
+          else Just `fmap` (atomically $ readArray route (i+1))
+  return (gen', AdjCity prev next i c)
 
 -- Important property: the before distance should never be InfDist.
 -- Reason: There should never be an InfDist in an existing route.
@@ -235,30 +238,16 @@ data Barrier = Barrier { barrCount :: TVar Int
 
 
 update :: Route -> Int -> City -> STM ()
-update route old city = do
-  (l, u) <- getBounds route
-  prev <- if old - 1 < l
-    then return Nothing
-    else do
-      left <- readArray route (old - 1)
-      writeArray route (old - 1) (left {adjNext = Just city})
-      return (Just $ adjCity left)
-  next <- if old + 1 > u
-    then return Nothing
-    else do
-      right <- readArray route (old + 1)
-      writeArray route (old + 1) (right {adjPrev = Just city})
-      return (Just $ adjCity right)
-  writeArray route old (AdjCity prev next old city)
+update route old city = writeArray route old city
 
 noDoubles :: Route -> String -> STM ()
 noDoubles route str = do
   es <- getElems route
-  let es' = map adjCityId es
+  let es' = map cityId es
       inv = sort (nub es') == sort es'
   when (not inv) (do
-    es <- map adjCityId `fmap` getElems route
-    error $ "swapcities: doubles " ++ show es' ++ " -- " ++ str)
+    es <- getElems route
+    error $ "swapcities: doubles " ++ show es ++ " -- " ++ str)
 
 
 -- | Change cities, update the cities on either side of the swapped cities
@@ -267,10 +256,10 @@ noDoubles route str = do
 swapCities state a b = atomically $ do
   let route = stRoute state
   -- noDoubles route "start"
-  aCity <- adjCity `fmap` readArray route a
-  bCity <- adjCity `fmap` readArray route b
-  update route b aCity
+  aCity <- readArray route a
+  bCity <- readArray route b
   update route a bCity
+  update route b aCity
   -- noDoubles route ("end " ++ show a ++ " with " ++ show b)
   
 decide :: StdGen -> State -> CityDist -> Double -> IO (StdGen, Accept)
@@ -285,11 +274,14 @@ decide gen state deltaDist t
         else return (gen', Deny)
 
 keepGoing :: State -> Int -> Int -> Int -> IO Bool
-keepGoing state i good bad = atomically $ do 
-    stop <- readTVar (stStop state)
-    let cond = not stop && good > bad
-    when (not cond) (writeTVar (stStop state) True)
-    return cond
+keepGoing state i good bad = 
+  case stMaxSteps state of
+    Nothing -> atomically $ do 
+      stop <- readTVar (stStop state)
+      let cond = not stop && good > bad
+      when (not cond) (writeTVar (stStop state) True)
+      return cond
+    Just maxSteps -> return (i < maxSteps)
 
 -- | Waits at a barrier for 'n' workers to arrive. It will
 -- skip the operation of stop has been indicated by the TVar.
