@@ -45,7 +45,7 @@ threadLoop state seed =
       when continue $ do
         (gen', cityA) <- getRandomAdjCity gen (stRoute state)
         (gen'', good', bad') <- threadInnerLoop state cityA t 0 0 (stInnerIters state) gen'
-        barrierWait state
+        -- barrierWait state
         loop good' bad' (cool t) (i + 1) gen''
 
 
@@ -168,9 +168,6 @@ calcDelta cityMap a b = distAfter - distBefore
 data GoodOrBad = Good | Bad deriving Show
 data Accept = Accept GoodOrBad | Deny deriving Show
 
-update :: Route -> Int -> City -> STM ()
-update route old city = writeArray route old city
-
 -- | Change cities, update the cities on either side of the swapped cities
 -- to indicate their new adjacent neighbour.
 swapCities :: State -> Int -> Int -> IO ()
@@ -178,8 +175,8 @@ swapCities state a b = atomically $ do
   let route = stRoute state
   aCity <- readArray route a
   bCity <- readArray route b
-  update route a bCity
-  update route b aCity
+  writeArray route a bCity
+  writeArray route b aCity
   
 decide :: StdGen -> CityDist -> Double -> IO (StdGen, Accept)
 decide gen deltaDist t 
