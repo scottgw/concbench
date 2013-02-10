@@ -3,57 +3,59 @@ package ch.ethz.se.concbench.mutex;
 import java.util.Vector;
 
 public class Mutex {
-	static class Shared {
-		int x;
+    static class Shared {
+        int x;
 
-		Shared() {
-			x = 0;
-		}
+        Shared() {
+            x = 0;
+        }
 		
-		synchronized void update () {
-			x++;
-		}
-	}
+        synchronized void update () {
+            x++;
+        }
+    }
 
-	static class Worker implements Runnable {
-		Shared shared;
-		static final int maxIters = 20000;
+    static class Worker implements Runnable {
+        Shared shared;
 
-		public Worker(Shared s) {
-			shared = s;
-		}
+        public Worker(Shared s) {
+            shared = s;
+        }
 
-		public void run() {
-			for (int i = 0; i < maxIters; i++) {
-				shared.update();
-			}
-		}
-	}
+        public void run() {
+            for (int i = 0; i < maxIters; i++) {
+                shared.update();
+            }
+        }
+    }
 
-	static Shared shared;
+    static Shared shared;
 
-	/**
-	 * @param args
-	 */
-	public static void main(String[] args) {
-		int n = Integer.parseInt(args[0]);
-		shared = new Shared();
-		Vector<Thread> workers = new Vector<Thread>();
+    static int maxIters;
 
-		for (int i = 0; i < n; i++) {
-			Thread worker = new Thread(new Worker(shared));
-			workers.add(worker);
-			worker.start();
-		}
+    /**
+     * @param args
+     */
+    public static void main(String[] args) {
+        maxIters = Integer.parseInt (args[0]);
+        int n = Integer.parseInt(args[1]);
+        shared = new Shared();
+        Vector<Thread> workers = new Vector<Thread>();
 
-		try {
-			for (Thread t : workers) {
-				t.join();
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+        for (int i = 0; i < n; i++) {
+            Thread worker = new Thread(new Worker(shared));
+            workers.add(worker);
+            worker.start();
+        }
 
-	}
+        try {
+            for (Thread t : workers) {
+                t.join();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+    }
 
 }
