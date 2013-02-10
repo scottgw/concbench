@@ -6,14 +6,14 @@ import akka.actor.Props
 import akka.actor.ActorRef
 
 object NoShare {
-  val numWorkers: Int = 4
+  var numWorkers: Int = 4
 
   sealed class Resp
   case class Answer(i: Long) extends Resp
   case class Start() extends Resp
 
   def main(args: Array[String]): Unit = {
-    // numWorkers = args(1).toInt
+    numWorkers = args(1).toInt
     val system = ActorSystem("NoShare")
     val workers: Array[ActorRef] = new Array[ActorRef] (numWorkers)
     for (i <- 0 until numWorkers) {

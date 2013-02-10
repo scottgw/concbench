@@ -8,10 +8,12 @@ import akka.actor.Props
 import akka.actor.actorRef2Scala
 
 object Condition {
-  final val maxElems: Int = 5000
-  val numWorkers = 32
+  var maxElems: Int = 5000
+  var numWorkers = 32
 
   def main(args: Array[String]) = {
+    maxElems = args(1).toInt
+    numWorkers = args(2).toInt
     val system = ActorSystem("ProdCons")
     val evens = new Array[ActorRef](numWorkers)
     val odds = new Array[ActorRef](numWorkers)

@@ -11,6 +11,8 @@ object Share {
   sealed case class Start(shared: ActorRef) extends Action
   
   def main(args: Array[String]) = {
+    maxCount = args(1).toInt
+    numWorkers = args(2).toInt
     val system = ActorSystem ("Mutex")
     val workers = new Array[ActorRef](numWorkers)
     val shared = system.actorOf(Props[Shared], name = "shared")

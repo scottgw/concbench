@@ -10,12 +10,14 @@ import akka.util.Timeout
 import akka.util.duration._
 
 object ProdCons {
-  implicit val timeout = Timeout(1 minutes)
+  // implicit val timeout = Timeout(1 minutes)
 
-  final val maxElems: Int = 20000
-  val numWorkers = 32
+  var maxElems: Int = 20000
+  var numWorkers = 32
 
   def main(args: Array[String]) = {
+    numWorkers = args(1).toInt
+    maxElems = args(2).toInt
     val system = ActorSystem("ProdCons")
     val producers = new Array[ActorRef](numWorkers)
     val consumers = new Array[ActorRef](numWorkers)
