@@ -36,10 +36,12 @@ public class Main {
 		}
 	}
 	
-	final static int maxIters = 20000;
+	static int maxIters = 20000;
 	
 	public static void main (String args[]) {
-		int numEach = Integer.parseInt(args[0]);
+        int maxIters = Integer.parseInt(args[0]);
+		int numEach = Integer.parseInt(args[1]);
+
 		Vector <Thread> threads = new Vector<Thread> ();
 		SharedQueue <Integer> queue = new SharedQueue <Integer> (); 
 		

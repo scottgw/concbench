@@ -107,8 +107,6 @@ public class Condition {
                 e.printStackTrace();
             }
         }
-		
-        System.out.println ("Shared val: " + s.x);
     }
 
 }
