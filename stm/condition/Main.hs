@@ -1,5 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
-module Main where
+module Main (main) where
 
 import Control.Concurrent.Async
 import Control.Concurrent.STM
@@ -24,11 +24,9 @@ conditionTest numWorkers numElems var =
       let !x' = x + 1
       writeTVar var x'
 
-    producerActions = replicateM_ numElems (atomically producerAction)
-    consumerActions = replicateM_ numElems (atomically consumerAction)
-
-    prods = replicate numWorkers producerActions
-    cons = replicate numWorkers consumerActions
+    makeWorkers = replicate numWorkers . replicateM_ numElems
+    prods = makeWorkers (atomically producerAction)
+    cons = makeWorkers (atomically consumerAction)
 
 
 main :: IO ()
