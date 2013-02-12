@@ -1,2 +1,2 @@
-all:
-	sbt compile
+target/Main.jar:
+	sbt compile assembly
