@@ -16,8 +16,9 @@ object ProdCons {
   var numWorkers = 32
 
   def main(args: Array[String]) = {
+    maxElems = args(0).toInt
     numWorkers = args(1).toInt
-    maxElems = args(2).toInt
+
     val system = ActorSystem("ProdCons")
     val producers = new Array[ActorRef](numWorkers)
     val consumers = new Array[ActorRef](numWorkers)
@@ -32,7 +33,6 @@ object ProdCons {
     consumers map (_ ! Start (shared))
     
     system.awaitTermination
-    println("System done")
   }
 
   sealed class Action
@@ -49,68 +49,12 @@ object ProdCons {
           shared ! NewElement(i)
         }
         shared ! Stop()
-        println("Producer done")
 
         context.stop(self)
       }
     }
   }
-// // Trying to use futures, times out above 16 consuemrs.producers
-//  class Consumer extends Actor {
-//    var count = 0
-//
-//    def receive = {
-//      case Start(shared) => {
-//
-//        for (i <- 0 until maxElems) {
-//        	println("Consumer asking " + i)
-//
-//          val future = shared ? RequestElement()
-//
-//          Await.result(future, timeout.duration).asInstanceOf[Any]
-//          println("Consumer received " + i)
-//        }
-//        shared ! Stop()
-//        context.stop(self)
-//      }
-//    }
-//  }
-//
-//  class Shared extends Actor {
-//    val q: Queue[Any] = new Queue[Any]()
-//    val waiters: Queue[ActorRef] = new Queue[ActorRef]()
-//
-//    var doneCount = 0
-//
-//    def receive = {
-//      case RequestElement() => {
-//        if (!q.isEmpty) {
-//          sender ! q.dequeue
-//        } else {
-//          println("waiter size: " + waiters.size)
-//
-//          waiters.enqueue(sender)
-//        }
-//      }
-//      case NewElement(a) => {
-//        q.enqueue(a)
-////        println("q size: " + q.size)
-//
-//        while (!waiters.isEmpty && !q.isEmpty) {
-//          println("waiter size: " + waiters.size)
-//          waiters.dequeue ! q.dequeue
-//        }
-//      }
-//      case Stop() => {
-//        doneCount = doneCount + 1
-//        println("done: " + doneCount + " of " + 2 * numWorkers)
-//        if (doneCount == 2 * numWorkers) {
-//          println("Shared done")
-//          context.system.shutdown
-//        }
-//      }
-//    }
-//  }
+
     class Consumer extends Actor {
       var count = 0
   
@@ -121,7 +65,6 @@ object ProdCons {
         case ElementReady(a: Any) => {
           count = count + 1
           if (count == maxElems) {
-            println ("Consumer done")
             sender ! Stop()
             context.stop(self)
           } else {
@@ -153,9 +96,8 @@ object ProdCons {
         }
         case Stop () => {
           doneCount = doneCount + 1
-          println ("done: " + doneCount + " of " + 2*numWorkers)
+
           if (doneCount == 2*numWorkers) {
-            println ("Shared done")
             context.system.shutdown
           }
         }
