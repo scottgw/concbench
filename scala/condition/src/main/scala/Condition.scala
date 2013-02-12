@@ -12,8 +12,8 @@ object Condition {
   var numWorkers = 32
 
   def main(args: Array[String]) = {
-    maxElems = args(1).toInt
-    numWorkers = args(2).toInt
+    maxElems = args(0).toInt
+    numWorkers = args(1).toInt
     val system = ActorSystem("ProdCons")
     val evens = new Array[ActorRef](numWorkers)
     val odds = new Array[ActorRef](numWorkers)
@@ -28,7 +28,6 @@ object Condition {
     odds map (_ ! Start(shared))
 
     system.awaitTermination
-    println("System done")
   }
 
   sealed class Action
@@ -53,7 +52,6 @@ object Condition {
         count = count + 1
         sender ! Put(i + 1, count == maxElems)
         if (count == maxElems) {
-          println("Odder done")
           sender ! Stop()
           context.stop(self)
         }
@@ -73,7 +71,6 @@ object Condition {
         count = count + 1
         sender ! Put(i + 1, count == maxElems)
         if (count == maxElems) {
-          println("Evener done")
           sender ! Stop()
           context.stop(self)
         }
@@ -133,9 +130,7 @@ object Condition {
 
       case Stop() => {
         doneCount = doneCount + 1
-        //println("done: " + doneCount + " of " + 2 * numWorkers)
         if (doneCount == 2 * numWorkers) {
-          println("Shared done " + n)
           context.system.shutdown
         }
       }
