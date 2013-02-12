@@ -13,7 +13,8 @@ object NoShare {
   case class Start() extends Resp
 
   def main(args: Array[String]): Unit = {
-    numWorkers = args(1).toInt
+    numWorkers = args(0).toInt
+
     val system = ActorSystem("NoShare")
     val workers: Array[ActorRef] = new Array[ActorRef] (numWorkers)
     for (i <- 0 until numWorkers) {
@@ -24,10 +25,9 @@ object NoShare {
       var cnt: Int = 0
       def receive = {
         case Answer(i) => {
-          println (i)
           cnt = cnt + 1
           if (cnt == numWorkers)
-            context.stop(self)
+            context.system.shutdown
         }
         case Start() => {
           for (i: Int <- 0 until numWorkers) {
@@ -46,7 +46,6 @@ object NoShare {
     def receive = {
       case _ => {
         sender ! Answer (fib(40))
-        context.stop(self)
       }
     }
 
