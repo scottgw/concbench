@@ -11,8 +11,8 @@ object Mutex {
   sealed case class Start(shared: ActorRef) extends Action
   
   def main(args: Array[String]) = {
-    maxCount = args(1).toInt
-    numWorkers = args(2).toInt
+    maxCount = args(0).toInt
+    numWorkers = args(1).toInt
     val system = ActorSystem ("Mutex")
     val workers = new Array[ActorRef](numWorkers)
     val shared = system.actorOf(Props[Shared], name = "shared")
@@ -23,7 +23,6 @@ object Mutex {
     }
         
     system.awaitTermination
-    println ("System done")
   }
 
   class Shared extends Actor {
