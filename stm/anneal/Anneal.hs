@@ -1,18 +1,22 @@
 {-# LANGUAGE ScopedTypeVariables, TupleSections, BangPatterns #-}
 module Main (main, genInput) where
 
+import Control.Applicative
 import Control.Concurrent.Async
 import Control.Concurrent.STM
 import Control.Monad
 
 import Data.Array.MArray
 
-import System.Random (StdGen, random, randomR, mkStdGen)
+import System.Random.Mersenne -- Random (StdGen, random, randomR, mkStdGen)
 import System.Environment
+import System.TimeIt
 
 import City
 import State
 
+
+numRuns = 10
 
 main :: IO ()
 main = do
@@ -21,13 +25,19 @@ main = do
       innerIters = read innerIterArg
       outerIters = read outerIterArg
       temp = read tempArg
-
-  state <- generateState n outerIters innerIters temp
-  printState state
-  mapConcurrently (threadLoop state) [1..n]
+  cityMap <- readInput
+  --   gen <- newMTGen (Just 42)
+  -- setStdGen gen
+  let test = do
+        state <- generateState cityMap n outerIters innerIters temp
+        -- printState state
+        mapConcurrently (threadLoop state) [1..n]
+        -- printState state
+        
+  (secs, _) <- timeItT (replicateM numRuns test)
   
-  -- threadLoop state
-  printState state
+  putStrLn (show (secs/fromIntegral numRuns) ++ " s")
+  
   return ()
 
 --
@@ -37,16 +47,17 @@ main = do
 threadLoop :: State -> -- ^ Common state
               Int   -> -- ^ Random seed
               IO ()
-threadLoop state seed = 
-  loop 0 (-1) (stInitTemp state) 0 (mkStdGen seed)
+threadLoop state seed = do
+  gen <- getStdGen
+  loop 0 (-1) (stInitTemp state) 0 gen
   where 
     loop good bad t i gen = do
       continue <- keepGoing state i good bad
       when continue $ do
-        (gen', cityA) <- getRandomAdjCity gen (stRoute state)
-        (gen'', good', bad') <- threadInnerLoop state cityA t 0 0 (stInnerIters state) gen'
+        cityA <- getRandomAdjCity gen (stRoute state)
+        (good', bad') <- threadInnerLoop state cityA t 0 0 (stInnerIters state) gen
         -- barrierWait state
-        loop good' bad' (cool t) (i + 1) gen''
+        loop good' bad' (cool t) (i + 1) gen
 
 
 -- | A cooling function that decreases the temperature.
@@ -105,15 +116,15 @@ threadInnerLoop :: State  ->     -- ^ Common state
                    Int    ->     -- ^ Number of good decisions
                    Int    ->     -- ^ Number of bad decisions
                    Int    ->     -- ^ Iteration countdown
-                   StdGen ->     -- ^ RNG
-                   IO (StdGen, Int, Int) -- ^ Final good and bad counts
-threadInnerLoop _ _ _ good bad 0 gen = return (gen, good, bad)
-threadInnerLoop state cityA t good bad i gen = do
+                   MTGen ->     -- ^ RNG
+                   IO (Int, Int) -- ^ Final good and bad counts
+threadInnerLoop _ _ _ !good !bad 0 _ = return (good, bad)
+threadInnerLoop state !cityA !t !good !bad !i !gen = do
   let route = stRoute state
-  (gen', cityB) <- getRandomAdjCity gen route
+  cityB <- getRandomAdjCity gen route
   
   let delta = calcDelta (stCityMap state) cityA cityB
-  (gen'', decision) <- decide gen' delta t
+  decision <- decide gen delta t
   -- print (delta, decision) 
   let bump Good = (good + 1, bad)
       bump Bad  = (good, bad + 1)
@@ -122,32 +133,55 @@ threadInnerLoop state cityA t good bad i gen = do
     Accept goodOrBad -> do
       let (good', bad') = bump goodOrBad
       swapCities state (adjRouteIdx cityA) (adjRouteIdx cityB)
-      threadInnerLoop state cityB t good' bad' (i-1) gen''
-    Deny        -> threadInnerLoop state cityB t good bad (i-1) gen''
+      threadInnerLoop state cityB t good' bad' (i-1) gen
+    Deny        -> threadInnerLoop state cityB t good bad (i-1) gen
  
 
 --
 -- Thread helper functions
 --
 
-getRandomAdjCity :: StdGen -> Route -> IO (StdGen, AdjCity)
+randomR :: (Int, Int) -> MTGen -> IO Int
+randomR (!l, !u) gen = bound <$> random gen
+  where
+    bound i = (abs i `rem` u - l) + l
+
+-- getRandomAdjCity :: MTGen -> Route -> IO AdjCity
+-- getRandomAdjCity gen route = do
+--   (l,u) <- atomically $ getBounds route
+--   i <- randomR (l, u) gen
+
+--   c <- atomically $ readArray route i
+--   let readAdj j = Just `fmap` (atomically $ readArray route j)
+--   prev <- if i <= l
+--           then return Nothing
+--           else readAdj (i-1)
+--   next <- if i >= u
+--           then return Nothing
+--           else readAdj (i+1)
+--   return (AdjCity prev next i c)
+
+
+getRandomAdjCity :: MTGen -> Route -> IO AdjCity
 getRandomAdjCity gen route = do
   (l,u) <- atomically $ getBounds route
-  let (i, gen') = randomR (l, u) gen
-  c <- atomically $ readArray route i
-  let readAdj j = Just `fmap` (atomically $ readArray route j)
-  prev <- if i <= l
-          then return Nothing
-          else readAdj (i-1)
-  next <- if i >= u
-          then return Nothing
-          else readAdj (i+1)
-  return (gen', AdjCity prev next i c)
+  i <- randomR (l, u) gen
+  atomically $ do
+    c <- readArray route i
+    let readAdj j = Just <$> readArray route j
+    prev <- if i <= l
+            then return Nothing
+            else readAdj (i-1)
+    next <- if i >= u
+            then return Nothing
+            else readAdj (i+1)
+    return (AdjCity prev next i c)
+
 
 -- Important property: the before distance should never be InfDist.
 -- Reason: There should never be an InfDist in an existing route.
 calcDelta :: CityMap -> AdjCity -> AdjCity -> CityDist
-calcDelta cityMap a b = distAfter - distBefore
+calcDelta cityMap !a !b = distAfter - distBefore
   where
     dist (AdjCity prev post _ city) = 
       let dist' = maybe 0 (interCityDist cityMap city)
@@ -157,8 +191,8 @@ calcDelta cityMap a b = distAfter - distBefore
                     , adjNext = adjNext y
                     }
 
-    a' = swapPos a b
-    b' = swapPos b a 
+    !a' = swapPos a b
+    !b' = swapPos b a 
 
     distBefore = dist a + dist b
     distAfter  = dist a' + dist b'
@@ -171,20 +205,19 @@ data Accept = Accept GoodOrBad | Deny deriving Show
 -- | Change cities, update the cities on either side of the swapped cities
 -- to indicate their new adjacent neighbour.
 swapCities :: State -> Int -> Int -> IO ()
-swapCities state a b = atomically $ do
+swapCities state !a !b = atomically $ do
   let route = stRoute state
   aCity <- readArray route a
   bCity <- readArray route b
   writeArray route a bCity
   writeArray route b aCity
   
-decide :: StdGen -> CityDist -> Double -> IO (StdGen, Accept)
-decide gen deltaDist t 
-  | deltaDist < 0 = return (gen, Accept Good)
+decide :: MTGen -> CityDist -> Double -> IO Accept
+decide !gen !deltaDist !t 
+  | deltaDist < 0 = return (Accept Good)
   | otherwise = do
-      let 
-        (rand, gen') = random gen
-        boltzman = exp (- deltaDist / t)
+      rand <- random gen
+      let boltzman = exp (- deltaDist / t)
       if boltzman > rand
-        then return (gen', Accept Bad)
-        else return (gen', Deny)
+        then return (Accept Bad)
+        else return Deny

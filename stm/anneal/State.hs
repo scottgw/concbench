@@ -9,26 +9,24 @@ import City
 
 -- State information 
 data State = 
-  State { stCityMap    :: CityMap
-        , stInitTemp   :: Double
-        , stInnerIters :: Int
-        , stBarrier    :: Barrier
-        , stMaxSteps   :: Maybe Int
-        , stNumWorkers :: Int
-        , stStop       :: TVar Bool
-        , stRoute      :: Route
+  State { stCityMap    :: !CityMap
+        , stInitTemp   :: !Double
+        , stInnerIters :: !Int
+        , stBarrier    :: !Barrier
+        , stMaxSteps   :: !(Maybe Int)
+        , stNumWorkers :: !Int
+        , stStop       :: !(TVar Bool)
+        , stRoute      :: !Route
         }
 
-data Barrier = Barrier { barrCount :: TVar Int
-                       , barrDone  :: TVar Int
+data Barrier = Barrier { barrCount :: !(TVar Int)
+                       , barrDone  :: !(TVar Int)
                        }
 
 
 
-generateState :: Int -> Int -> Int -> Double -> IO State
-generateState numWorkers outerIters innerIters temp = do
-  cityMap@(CityMap numCities _) <- readInput
-
+generateState :: CityMap -> Int -> Int -> Int -> Double -> IO State
+generateState cityMap@(CityMap numCities _) numWorkers outerIters innerIters temp = do
   let nums   = [0..numCities - 1]
 
   stop <- newTVarIO False

@@ -62,14 +62,14 @@ type CityDist = Double
 --
 type Route = TArray Int City
 
-data AdjCity = AdjCity { adjPrev :: Maybe City
-                       , adjNext :: Maybe City
-                       , adjRouteIdx :: Int
-                       , adjCity     :: City
+data AdjCity = AdjCity { adjPrev :: !(Maybe City)
+                       , adjNext :: !(Maybe City)
+                       , adjRouteIdx :: !Int
+                       , adjCity     :: !City
                        } deriving Show
 
-data City = City { cityId :: Int
-                 , cityName :: String
+data City = City { cityId :: !Int
+                 , cityName :: !String
                  } deriving Show
 
 adjCityId :: AdjCity -> Int
