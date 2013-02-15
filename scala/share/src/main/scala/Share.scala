@@ -14,6 +14,7 @@ object Share {
     maxCount = args(0).toInt
     numWorkers = args(1).toInt
     val system = ActorSystem ("Share")
+    val t1 = System.currentTimeMillis()
     val workers = new Array[ActorRef](numWorkers)
     val shared = system.actorOf(Props[Shared], name = "shared")
     
@@ -23,6 +24,8 @@ object Share {
     }
         
     system.awaitTermination
+    val t2 = System.currentTimeMillis()
+    print ((t2-t1)/1000.0)
   }
 
   sealed case class Update (i: Int)

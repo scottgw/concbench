@@ -20,6 +20,7 @@ object ProdCons {
     numWorkers = args(1).toInt
 
     val system = ActorSystem("ProdCons")
+    val t1 = System.currentTimeMillis()
     val producers = new Array[ActorRef](numWorkers)
     val consumers = new Array[ActorRef](numWorkers)
     val shared = system.actorOf(Props[Shared], name = "shared")
@@ -33,6 +34,8 @@ object ProdCons {
     consumers map (_ ! Start (shared))
     
     system.awaitTermination
+    val t2 = System.currentTimeMillis()
+    print ((t2-t1)/1000.0)
   }
 
   sealed class Action

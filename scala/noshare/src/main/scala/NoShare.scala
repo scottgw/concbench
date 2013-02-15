@@ -16,6 +16,7 @@ object NoShare {
     numWorkers = args(0).toInt
 
     val system = ActorSystem("NoShare")
+    val t1 = System.currentTimeMillis()
     val workers: Array[ActorRef] = new Array[ActorRef] (numWorkers)
     for (i <- 0 until numWorkers) {
       workers (i) = system.actorOf(Props[Fibber], name = "fibber" + i) 
@@ -40,6 +41,8 @@ object NoShare {
     val master = system.actorOf(Props(new Master), name = "master")
     master ! Start()
     system.awaitTermination;
+    val t2 = System.currentTimeMillis()
+    print ((t2-t1)/1000.0)
   }
 
   class Fibber extends Actor {

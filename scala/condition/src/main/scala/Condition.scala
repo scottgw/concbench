@@ -14,7 +14,11 @@ object Condition {
   def main(args: Array[String]) = {
     maxElems = args(0).toInt
     numWorkers = args(1).toInt
+
     val system = ActorSystem("ProdCons")
+    val t1 = System.currentTimeMillis()
+
+
     val evens = new Array[ActorRef](numWorkers)
     val odds = new Array[ActorRef](numWorkers)
     val shared = system.actorOf(Props[Shared], name = "shared")
@@ -28,6 +32,8 @@ object Condition {
     odds map (_ ! Start(shared))
 
     system.awaitTermination
+    val t2 = System.currentTimeMillis()
+    println ((t2 - t1) / 1000.0)
   }
 
   sealed class Action
