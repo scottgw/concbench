@@ -33,6 +33,6 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
-    [numWorkersStr, numElemsStr] ->
+    [numElemsStr, numWorkersStr] ->
       newTVarIO 0 >>= conditionTest (read numWorkersStr) (read numElemsStr)
     _ -> putStrLn "Expecting only 2 arguments"
