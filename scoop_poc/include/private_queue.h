@@ -1,12 +1,13 @@
-#include <future>
-#include "tbb/concurrent_queue.h"
-
 #ifndef __PRIVATE_QUEUE_H_
 #define __PRIVATE_QUEUE_H_
+#include <dispatch/dispatch.h>
+
+#include "tbb/concurrent_queue.h"
+
 template <class T>
 class private_queue {
  protected:
-  tbb::concurrent_bounded_queue <std::function<void()>* > *m_local_queue;
+  dispatch_queue_t m_local_queue;
   T* m_ref;
 
   bool m_last_was_query = false;
@@ -29,8 +30,7 @@ class private_queue {
 
   private_queue (T* ref) : m_ref (ref)
   {
-    m_local_queue = new tbb::concurrent_bounded_queue <std::function<void()>* >();
-    m_local_queue->set_capacity (128);
+    m_local_queue = dispatch_queue_create (NULL, NULL);
   }
   
   
@@ -45,7 +45,7 @@ class private_queue {
         func (ref);
       });
     m_last_was_query = false;
-    m_local_queue->push (fptr);
+    dispatch_async (m_local_queue, ^{func(ref);});
   }
   
   template <typename R>
@@ -54,16 +54,16 @@ class private_queue {
     if (m_last_was_query) {
       res = func(m_ref);
     } else {
-      auto p = new std::promise<R> ();
+      auto p = new tbb::concurrent_bounded_queue<R>();
       auto ref = m_ref;
       auto fptr = new std::function <void()>
         ([=]() 
          {
-           p->set_value (func (ref));
+           p->push (func (ref));
          });
 
       m_local_queue->push (fptr);
-      res = p->get_future().get();
+      p->pop(res);
     }
     m_last_was_query = true;
     return res;

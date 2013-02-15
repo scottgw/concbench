@@ -1,7 +1,6 @@
 #include <iostream>
 #include <vector>
 #include <queue>
-#include <future>
 #include <assert.h>
 #include <cstdlib>
 
