@@ -16,7 +16,7 @@ feature {NONE}
 			workers: ARRAYED_LIST [separate WORKER]
 			i: INTEGER
 		do
-      num_workers := argument (2).to_integer_32
+      num_workers := argument (1).to_integer_32
 
 			create workers.make (10)
 			from i := 1
