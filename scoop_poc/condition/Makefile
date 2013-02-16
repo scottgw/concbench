@@ -1,5 +1,5 @@
-CFLAGS=-pthread -ltbb -std=c++11 -rdynamic -g -I../include
+CFLAGS=-pthread -rdynamic -g -I../include -I./ -fblocks -ldispatch -W -std=c99 -lBlocksRuntime
 
-main: main.cpp
-	g++ main.cpp -o main ${CFLAGS} -O3
+main: main.c
+	clang queue_lock_mutex.c main.c -o main ${CFLAGS} -O3
 

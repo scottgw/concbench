@@ -4,27 +4,19 @@
 #include "processor.h"
 #include "private_queue.h"
 
-template <class T>
-class separate {
-public:
-  T *m_ref;
-  processor m_proc;
-  
-  separate (T *ref): m_proc () {
-    m_ref = ref;
-  }
+separate_t separate_create (void* data) {
+  separate_t sep = (separate_t) malloc (sizeof(separate_));
+  sep->ref = data;
+  sep->proc = processor_create();
+  return sep;
+}
 
-  private_queue <T> make_queue() {
-    return private_queue <T> (m_ref);
-  }
+void separate_lock_with (separate_t sep, private_queue_t q) {
+  processor_add_queue (sep->proc, private_queue_queue (q));
+}
+    
+private_queue_t separate_make_private_queue (separate_t sep) {
+  return private_queue_create (sep);
+}
 
-  void lock_with (private_queue <T> &q) {
-    m_proc.add_queue (q.queue());
-  }
-
-  private_queue <T> lock () {
-     auto m_local_queue = m_proc.new_run_queue ();
-     return private_queue <T> (m_local_queue, m_ref);
-  }
-};
 #endif
