@@ -29,7 +29,13 @@ private_queue_t private_queue_create (separate_t sep) {
   this->ref = sep->ref;
   this->last_was_query = false;
   this->queue = dispatch_queue_create (NULL, NULL);
+  dispatch_suspend (this->queue);
   return this;
+}
+
+
+void private_queue_lock (private_queue_t q) {
+  processor_add_queue (q->sep->proc, q->queue);
 }
 
 
@@ -51,16 +57,10 @@ uint64_t private_queue_log_call_with_result (private_queue_t q, uint64_t (^func)
     // future_t future = future_create();
     uint64_t *val = &res;
     dispatch_semaphore_t sem = dispatch_semaphore_create (0);
-    printf("privq: created semaphore\n");
     dispatch_async (q->queue, ^{
-        printf("about to run query\n");
         *val = func (q->ref);
-        printf("ran query\n");
         dispatch_semaphore_signal (sem);
-        printf("signalled semaphore\n");
-        /* future_set (future, func (ref)); */
       });
-    printf("privq: dispatched query\n");
 
     dispatch_semaphore_wait(sem, DISPATCH_TIME_FOREVER);
     res = *val; // future_get (future);
@@ -72,7 +72,10 @@ uint64_t private_queue_log_call_with_result (private_queue_t q, uint64_t (^func)
 
 void private_queue_unlock (private_queue_t q) {
   q->last_was_query = false;
-  dispatch_suspend (q->queue);
+  dispatch_async (q->queue, ^{
+      dispatch_suspend (q->queue);
+      processor_available (q->sep->proc);
+    });
 }
 
 #endif

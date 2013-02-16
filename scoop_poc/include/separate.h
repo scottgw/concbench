@@ -10,10 +10,6 @@ separate_t separate_create (void* data) {
   sep->proc = processor_create();
   return sep;
 }
-
-void separate_lock_with (separate_t sep, private_queue_t q) {
-  processor_add_queue (sep->proc, private_queue_queue (q));
-}
     
 private_queue_t separate_make_private_queue (separate_t sep) {
   return private_queue_create (sep);

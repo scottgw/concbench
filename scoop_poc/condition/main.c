@@ -11,35 +11,37 @@ int max_iters = 5000;
 
 void live (separate_t var, int signal) {
   private_queue_t private_queue = private_queue_create (var);
-  printf("worker with %d\n", signal);
   for (int i = 0; i < max_iters; i++) {
+    printf("worker %d iteration %d\n", signal, i);
     processor_t p = var->proc;
     bool wait_cond;
 
     // Lock the processor and check the wait-condition.
     // auto l_queue = m_queue->lock();
-    separate_lock_with (var, private_queue);
-    printf("worker locked\n");
+    private_queue_lock (private_queue);
+    printf("worker %d locked\n", signal);
     uint64_t (^wait_func)(void*) = ^ (void *x) {
-      printf("in wait func\n");
       return (uint64_t)(*(int*)x % 2 == signal);
     };
 
     // auto fut = l_queue.log_call_with_result (wait_func);
     wait_cond = private_queue_log_call_with_result (private_queue, wait_func);
-    printf("worker wait cond %d returned %d\n", signal, wait_cond);
+    printf("worker %d wait cond returned %d\n", signal, wait_cond);
 
     // If the wait-condition isn't satisfied, wait and recheck
     // when we're woken up (by another thread).
     while (!wait_cond) {
       // l_queue.unlock();
       private_queue_unlock (private_queue);
+      printf("worker %d unlocked to wait\n", signal);
       processor_wait(p);
+      printf("worker %d done waiting\n", signal);
       // l_queue = m_queue->lock();
-      separate_lock_with (var, private_queue);
-
+      private_queue_lock (private_queue);
+      printf("worker %d locked\n", signal);      
       // auto fut = l_queue.log_call_with_result (wait_func);
       wait_cond = private_queue_log_call_with_result (private_queue, wait_func);
+      printf("worker %d wait cond returned %d\n", signal, wait_cond);
     }
         
     // log the call with result.
@@ -87,8 +89,7 @@ int main (int argc, char** argv) {
                           ^{live(var, 1);});
   }
   printf("finished dispatch\n");
-  sleep (5);
-  // dispatch_group_wait (worker_grp, DISPATCH_TIME_FOREVER);
+  dispatch_group_wait (worker_grp, DISPATCH_TIME_FOREVER);
   printf("finished group waiting\n");
   printf("%d\n", x);
   
