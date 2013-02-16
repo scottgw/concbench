@@ -41,7 +41,7 @@ void private_queue_log_call(private_queue_t q, void (^func)(void*)) {
   q->last_was_query = false;
   dispatch_async (q->queue, ^{func(q->ref);});
 }
-  
+
 uint64_t private_queue_log_call_with_result (private_queue_t q, uint64_t (^func)(void*)) {
   uint64_t res;
   
@@ -51,8 +51,9 @@ uint64_t private_queue_log_call_with_result (private_queue_t q, uint64_t (^func)
     // future_t future = future_create();
     uint64_t *val = &res;
     dispatch_semaphore_t sem = dispatch_semaphore_create (0);
-
+    printf("privq: created semaphore\n");
     dispatch_async (q->queue, ^{
+        printf("about to run query\n");
         *val = func (q->ref);
         printf("ran query\n");
         dispatch_semaphore_signal (sem);

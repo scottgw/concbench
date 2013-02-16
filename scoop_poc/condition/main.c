@@ -1,5 +1,7 @@
+#include <dispatch/dispatch.h>
 #include <stdio.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include "separate.h"
 #include "private_queue.h"
@@ -85,7 +87,8 @@ int main (int argc, char** argv) {
                           ^{live(var, 1);});
   }
   printf("finished dispatch\n");
-  dispatch_group_wait (worker_grp, DISPATCH_TIME_FOREVER);
+  sleep (5);
+  // dispatch_group_wait (worker_grp, DISPATCH_TIME_FOREVER);
   printf("finished group waiting\n");
   printf("%d\n", x);
   
