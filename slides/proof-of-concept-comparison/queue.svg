@@ -23,7 +23,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title></dc:title>
+        <dc:title />
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -43,8 +43,8 @@
      inkscape:zoom="0.67372141"
      inkscape:cx="400.06138"
      inkscape:cy="225.60482"
-     inkscape:window-x="1414"
-     inkscape:window-y="266"
+     inkscape:window-x="588"
+     inkscape:window-y="205"
      inkscape:window-maximized="0"
      inkscape:current-layer="svg3114"
      fit-margin-top="0"
@@ -74,7 +74,7 @@
     <tspan
        id="tspan3123"
        y="102.89282"
-       x="126.22125">Processor x</tspan>
+       x="126.22125">Processor y</tspan>
   </text>
   <text
      style="font-size:18.75px;fill:#000000;font-family:ComicSans"
@@ -96,7 +96,7 @@
     <tspan
        id="tspan3129"
        y="-109.70618"
-       x="303.38724">Processor x</tspan>
+       x="303.38724">Processor y</tspan>
   </text>
   <text
      style="font-size:18.75px;fill:#000000;font-family:ComicSans"

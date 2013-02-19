@@ -118,21 +118,47 @@ end
     \includegraphics[width=3in]{queue-naive}
   \end{center}
 
-  Naive implementation: a regular queue wrapped in a monitor
-  takes 404s.
+  Naive implementation STL queue wrapped in a monitor: 404s.
+
+  Non-blocking TBB queue: 180s
+
+  Blocking TBB queue: 108s
 \end{frame}
 
 \begin{frame}
-                   Style      Time  
-------------------------   -------
-Blocking (STL wrapper)        404s
-TBB Non-blocking (sleep)      180s
-ES 7.2                        155s
-TBB Blocking                  108s
-ES 7.1                         33s
-Queue of queues                15s
-QoQ +Spinning                 3.7s
-QoQ +Local queries            2.0s
+  \frametitle{SCOOP implementation model 2}
+  
+  Lock contention can be reduced if there is no
+  memory to contend over:
+  use a queue of queues
+
+  \begin{center}
+    \includegraphics[width=2in]{queue-of-queues}
+  \end{center}
+
+  Queue of queues: 15s.
+
+  With limited spinning: 3.7s
+
+  Eliding the queue for second queries: 2.0s
+\end{frame}
+
+\begin{frame}
+  \frametitle{Putting them all together}
+
+  \begin{center}
+  \begin{tabular}{r|r}
+    Style &  Time  \\ \hline
+    Blocking (STL wrapper)   &  404s \\
+    TBB Non-blocking (sleep  &  180s \\
+    ES 7.2                   &  155s \\
+    TBB Blocking             &  108s \\
+    ES 7.1                   &   33s \\
+    Queue of queues          &   15s \\
+    QoQ + Spinning           &  3.7s \\
+    QoQ + Local queries      &  2.0s \\
+  \end{tabular}
+  \end{center}
 \end{frame}
 
 \begin{frame}
