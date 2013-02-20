@@ -52,8 +52,9 @@ def main():
 
     for task in tasks:
         for lang in langs:
-            for i in [1,2,4,8,16,32]:
-                run(results, task,lang, i)
+            for thread in [1,2,4,8,16,32]:
+                for i in range(3):
+                    run(results, task,lang, thread)
 
     with open('perf_results.csv', 'wb') as csv_file:
         perfwriter = csv.writer(csv_file, quoting=csv.QUOTE_MINIMAL)
