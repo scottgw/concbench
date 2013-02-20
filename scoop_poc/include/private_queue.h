@@ -6,7 +6,7 @@
 template <class T>
 class private_queue {
  protected:
-  tbb::concurrent_bounded_queue <std::function<void()>* > *m_local_queue;
+  work_queue *m_local_queue;
   T* m_ref;
 
   bool m_last_was_query = false;
@@ -29,8 +29,8 @@ class private_queue {
 
   private_queue (T* ref) : m_ref (ref)
   {
-    m_local_queue = new tbb::concurrent_bounded_queue <std::function<void()>* >();
-    m_local_queue->set_capacity (128);
+    m_local_queue = new work_queue();
+    m_local_queue->set_capacity (1);
   }
   
   

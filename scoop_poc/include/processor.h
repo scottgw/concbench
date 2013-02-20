@@ -7,18 +7,40 @@
 
 #include "tbb/concurrent_queue.h"
 
-template <typename T>
-T retry_pop (tbb::concurrent_bounded_queue <T> *q) {
-  T elem;
 
-  for (int i = 0; i < 1024; i++) {
-    if (q->try_pop (elem)) {
-      return elem;
-    }
+class work_queue {
+public:
+  typedef std::function<void()>* work;
+
+  work_queue (): m_q() 
+  {
   }
-  q->pop (elem);
-  return elem;
-}
+
+  void push (work elem) {
+    m_q.push(elem);
+  }
+
+  work retry_pop () {
+    work elem;
+
+    for (int i = 0; i < 1024; i++) {
+      if (m_q.try_pop (elem)) {
+        return elem;
+      }
+    }
+    m_q.pop (elem);
+    return elem;
+  }
+  
+  void set_capacity (int c) {
+    m_q.set_capacity (c);
+  }
+
+private:
+  tbb::concurrent_bounded_queue <work> m_q;
+
+
+};
 
 
 class processor {
@@ -27,9 +49,7 @@ class processor {
   std::condition_variable m_available_cv;
 
   // A queue where each member is another processor's run queue.
-  tbb::concurrent_bounded_queue <
-    tbb::concurrent_bounded_queue <
-      std::function <void () >* > *> m_q_queue;
+  tbb::concurrent_bounded_queue <work_queue*> m_q_queue;
 
   // The thread this thing has spawned off.
   std::thread *m_thread;
@@ -57,12 +77,12 @@ public:
 
   void main_loop () {
     for (;;) {
-      tbb::concurrent_bounded_queue <std::function <void () >* > *l_queue;
-      l_queue = retry_pop (&m_q_queue); // m_q_queue.pop(l_queue);
+      work_queue *l_queue;
+      m_q_queue.pop(l_queue);
       if (l_queue != NULL) {
         for (;;) {
           std::function <void () >* fptr;
-          fptr = retry_pop (l_queue); // l_queue->pop(fptr);
+          fptr = l_queue->retry_pop (); // l_queue->pop(fptr);
           
           if (fptr != NULL) {
             (*fptr)();
@@ -86,12 +106,12 @@ public:
     m_available = false;
   }
 
-  void add_queue (tbb::concurrent_bounded_queue<std::function<void()>* >* q) {
+  void add_queue (work_queue* q) {
     m_q_queue.push (q);
   }
   
-  tbb::concurrent_bounded_queue <std::function<void()>* >* new_run_queue () {
-    auto q = new tbb::concurrent_bounded_queue<std::function<void()>* > ();
+  work_queue* new_run_queue () {
+    auto q = new work_queue ();
     add_queue (q);
     return q;
   }
