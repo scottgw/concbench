@@ -1,8 +1,8 @@
-#include <future>
-#include "tbb/concurrent_queue.h"
-
 #ifndef __PRIVATE_QUEUE_H_
 #define __PRIVATE_QUEUE_H_
+
+#include "processor.h"
+
 template <class T>
 class private_queue {
  protected:
@@ -54,16 +54,17 @@ class private_queue {
     if (m_last_was_query) {
       res = func(m_ref);
     } else {
-      auto p = new std::promise<R> ();
+      auto q = new my_queue<R> ();
       auto ref = m_ref;
       auto fptr = new std::function <void()>
         ([=]() 
          {
-           p->set_value (func (ref));
+           q->push (func (ref));
          });
 
       m_local_queue->push (fptr);
-      res = p->get_future().get();
+      res = q->retry_pop();
+      delete q;
     }
     m_last_was_query = true;
     return res;

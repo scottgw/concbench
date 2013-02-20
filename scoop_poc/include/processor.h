@@ -11,9 +11,9 @@ typedef std::function<void()>* work;
 
 
 template <typename T>
-class queue {
+class my_queue {
 public:
-  queue (): m_q() 
+  my_queue(): m_q() 
   {
   }
 
@@ -42,7 +42,7 @@ private:
 
 };
 
-typedef queue<work> work_queue;
+typedef my_queue<work> work_queue;
 
 
 class processor {
