@@ -7,21 +7,22 @@
 
 #include "tbb/concurrent_queue.h"
 
+typedef std::function<void()>* work;
 
-class work_queue {
+
+template <typename T>
+class queue {
 public:
-  typedef std::function<void()>* work;
-
-  work_queue (): m_q() 
+  queue (): m_q() 
   {
   }
 
-  void push (work elem) {
+  void push (T elem) {
     m_q.push(elem);
   }
 
-  work retry_pop () {
-    work elem;
+  T retry_pop () {
+    T elem;
 
     for (int i = 0; i < 1024; i++) {
       if (m_q.try_pop (elem)) {
@@ -37,10 +38,11 @@ public:
   }
 
 private:
-  tbb::concurrent_bounded_queue <work> m_q;
-
+  tbb::concurrent_bounded_queue <T> m_q;
 
 };
+
+typedef queue<work> work_queue;
 
 
 class processor {
