@@ -1,0 +1,14 @@
+mutex
+wall: 0:12.24
+condition
+wall: 2:52.47
+mutex
+wall: 0:02.25
+noshare
+wall: 0:04.60
+prodcons
+wall: 2:29.27
+share
+wall: 0:02.88
+
+mutex seems to have a pretty large variance
