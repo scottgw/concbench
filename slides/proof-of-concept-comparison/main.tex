@@ -100,9 +100,9 @@ end
   \item This code avoids a mutex!
   \item Mutexes are slow because they may trigger context switch...
   \item ... but \emph{yield} also triggers a context switch.
-  \item This ``fast'' code is basically a mutex but never sleeps and
+  \item This code is basically a mutex but never sleeps and
     eats a core (it spins until it acquires the resource).
-  \item Replacing it with a real mutex helps.
+  \item Replacing it with a traditional mutex helps.
   \end{itemize}
 \end{minipage}
 \end{frame}
@@ -113,10 +113,11 @@ end
   \begin{itemize}[<+->]
   \item I started to rewrite the slow parts as best I could;
     these did lead to some improvements.
-  \item However the changes are untestable: the code is currently
-    broken and I have no way to figure out if it's more or less broken 
+  \item However the changes are untestable: the code currently
+    deadlocks and has some other bugs so
+    I have no way to figure out if it's more or less broken 
     after my changes.
-  \item Develop an ``laboratory'' where I can try out ideas: 
+  \item Develop a ``laboratory'' where I can try out ideas: 
     proof-of-concept in C++.
   \end{itemize}
 \end{frame}
