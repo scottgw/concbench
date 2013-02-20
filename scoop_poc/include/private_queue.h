@@ -30,7 +30,7 @@ class private_queue {
   private_queue (T* ref) : m_ref (ref)
   {
     m_local_queue = new work_queue();
-    m_local_queue->set_capacity (1);
+    m_local_queue->set_capacity (32);
   }
   
   
