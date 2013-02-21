@@ -1,4 +1,5 @@
 *~
+*.swp
 perf_results.csv
 /slides/proof-of-concept-comparison/_region_.tex
 /slides/proof-of-concept-comparison/main.aux
