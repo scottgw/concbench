@@ -1,92 +1,143 @@
 #include <iostream>
-#include <vector>
-#include <queue>
-#include <future>
 #include <assert.h>
+#include <atomic>
+#include <functional>
 
-#include "separate.h"
-#include "private_queue.h"
-#include "processor.h"
+#include <tbb/task.h>
+#include <tbb/concurrent_queue.h>
 
-std::vector <processor*> g_processors;
+using namespace tbb;
+using namespace std;
 
-int max_iters = 20000;
-
-class shared {
+class work_item_i {
 public:
-  int i = 0;
-  void update () {
-    i++;
-  }
+  work_item_i() {}
+  virtual void run() = 0;
 };
 
-class scoop_mutex {
+class run_work_item: public task {
+  task* execute();
+  work_item_i* item;
 public:
-  separate <shared> *m_shared;
-  private_queue <shared> m_private_queue;
+  run_work_item (work_item_i* item_): item(item_) {}
+};
 
-  scoop_mutex (separate <shared>* shared):
-    m_private_queue (shared->make_queue())
+class work_item;
+
+class serializer {
+  concurrent_queue <work_item_i*> q;
+  tbb::atomic<int> count;
+  std::atomic_bool has_started;
+  function<void()> space_f;
+
+  void move_to_ready_pile()
   {
-    m_shared = shared;
+    work_item_i* work = NULL;
+    q.try_pop(work);
+    task::enqueue(*new(task::allocate_root()) run_work_item (work));
   }
-
-  void live() {
-    for (int i = 0; i < max_iters; i++) {
-      run (i);
-    }
-    std::cout << "done modifying" << std::endl;
-  }
-
-  void run(int i) {
-    // Lock the processor, setup the shared.
-    // auto l_queue = m_shared->lock();
-    m_shared->lock_with(m_private_queue);
-
-    // log the call.
-    m_private_queue.log_call ([](shared *s) {
-        s->update();
-      });
+public:
+  serializer() {
     
-    // end the shared
-    m_private_queue.unlock();
+    space_f = [](){};
+  }
+
+  void add(work_item_i*);
+
+  void note_completion() {
+    if (--count != 0)
+      move_to_ready_pile();
+  }
+};
+
+class qoq {
+  concurrent_queue <work_item*> work_queue;
+  concurrent_queue <concurrent_queue<work_item*> > big_queue;
+  tbb::atomic<int> count;
+
+  
+
+public:
+  void add(serializer* s)
+  {
+    q.push(s);
+  }
+
+  void add_queue () {
+    auto q = concurrent_queue <work_item*>();
+    big_queue.push(q);
+  }
+
+  void swapin()
+  {
+    if (big_queue.try_pop (work_queue)) {
+      
+    }
+  }
+}
+
+
+class work_item: public work_item_i {
+  function<void()> f;
+  
+  serializer* s;
+  void run() {
+    f();
+    delete this;
+    s->note_completion();
+  }
+
+public:
+  work_item (decltype(f) &f_, serializer* s_): work_item_i(), f(f_), s(s_) 
+  {
+
   }
 };
 
 
+void serializer::add(work_item_i* work)
+{
+  q.push(work);
+  has_started.store (true); // was_started = started.fetch_or(true);
+  if (has_started.load() && ++count == 1)
+    move_to_ready_pile();
 
-int main (int argc, char** argv) {
-  max_iters = atoi(argv[1]);
-  auto max_each = atoi(argv[2]);
-  std::vector <std::future <bool> > workers;
-  auto s = new shared();
-  separate <shared> queue (s);
+  // work_item *space = new work_item (space_f, this);
+  // q.push(space);
+  // if (++count == 1)
+  //   move_to_ready_pile();
+}
 
-  g_processors.push_back (&queue.m_proc);
 
-  for (int i = 0; i < max_each; i++) {
-    workers.push_back 
-      (std::async 
-       (std::launch::async,
-        [&queue]() {
-         scoop_mutex m (&queue);
-         m.live();
-         return true;
-       }));
-  }
+task* run_work_item::execute()
+{
+  item->run();
+  return NULL;
+}
+
+
+int main( int argc, char** argv )
+{
+  auto num_elems = atoi(argv[1]);
+  auto num_workers = atoi(argv[2]);  
+
+  int x = 0;
+  auto s = new serializer();
+  auto f = function<void()> ([&](){x++;});
+
+  concurrent_bounded_queue<bool> q;
+
+  for (int i = 0; i < num_elems*num_workers; ++i)
+    {
+      auto work = new work_item (f, s);
+      s->add (work);
+    }
   
-  for (auto& worker : workers) {
-    worker.get();
-  }
+  auto finisher = function<void()> ([&](){q.push(true);});
+  s->add (new work_item (finisher, s));
 
-  // example of final shutdown, this should be done by the GC in a real
-  // implementation.
-  for (auto& proc : g_processors) {
-    proc->shutdown ();
-    proc->join();
-  }
-
-
-  std::cout << "final value: " << s->i << std::endl;
-  return 0;
+  bool done;
+  q.pop(done);
+  
+  cout << x << endl;
 }
