@@ -46,9 +46,9 @@ public:
       move_to_ready_pile();
   }
   
-  // void add_end () {
-  //   add ();
-  // }
+  void add_end () {
+    add (NULL);
+  }
 
   void start()
   {
@@ -99,9 +99,10 @@ class work_item: public work_item_i {
   
   serializer* s;
   void run() {
+    serializer* tmp_s = s;
     f();
-    // delete this;
-    s->note_completion();
+    delete this;
+    tmp_s->note_completion();
   }
 
 public:
@@ -130,6 +131,7 @@ void serializer::note_completion() {
 
 task* run_work_item::execute()
 {
+  assert (item != NULL);
   item->run();
   return NULL;
 }
@@ -138,31 +140,27 @@ int num_elems;
 concurrent_bounded_queue<bool> q;  
 int x = 0;
 
-void add_end(serializer *s) {
-  serializer *s_ = s;
-  s->add(NULL);
-}
-
 void spawn_worker_thread (qoq *qoq) {
   serializer *s = new serializer();
+  work_item *work;
   auto f = function<void()> ([](){x++;});
-  auto work = new work_item (f, s);
+
 
   for (int i = 0; i < num_elems; ++i)
-    {
-  
+    { 
+      work = new work_item (f, s);
       qoq->add (s);
       s->add (work);      
-      add_end(s);
+      s->add_end();
     }
 
   auto finisher = function<void()> ([](){
       q.push(true);
     });
-  s = new serializer();
+
   qoq->add(s);
   s->add (new work_item (finisher, s));
-  add_end(s);
+  s->add_end();
 }
 
 int main( int argc, char** argv )
