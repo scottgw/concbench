@@ -5,160 +5,110 @@
 #include <assert.h>
 #include <cstdlib>
 
-#include "separate.h"
-#include "private_queue.h"
-#include "processor.h"
+#include <tbb/concurrent_queue.h>
 
-std::vector <processor*> g_processors;
+#include "serializer.h"
+#include "qoq.h"
 
-int max_iters = 20000;
+int max_iters;
+tbb::concurrent_bounded_queue<bool> q;
+std::queue<int> shared_queue;
 
-class producer {
-public:
-  separate <std::queue <int> > *m_queue;
-  private_queue <std::queue <int>> m_private_queue;
 
-  producer (separate <std::queue <int> >* queue) : 
-    m_private_queue (queue->make_queue()) 
-  {
-    m_queue = queue;
-  }
+void spawn_producer_thread (qoq *qoq) {
+  serializer *s = new serializer();
+  // work_item work;
 
-  void live() {
-    for (int i = 0; i < max_iters; i++) {
-      // std::cout << "producer run: " << i << std::endl;
-      run (i);
+  for (int i = 0; i < max_iters; ++i)
+    { 
+      auto f = std::function<void()> ([&i](){
+          shared_queue.push(i);
+        });
+      auto work = new work_item (f, s);
+      
+      qoq->add (s);
+      s->add (work);      
+      s->add_end();
     }
-    std::cout << "done producing" << std::endl;
-  }
 
-  void run(int i) {
-    // Lock the processor, setup the queue.
-    // auto l_queue = m_queue->lock ();
-    m_queue->lock_with(m_private_queue);
-    
-    // // If we want the traditional SCOOP behaviour:
-    // std::function <bool(std::queue<int>*)> wait = [](std::queue<int> *q) {
-    //   return true;
-    // };
+  auto finisher = std::function<void()> ([](){
+      q.push(true);
+    });
 
-    // auto fut = m_private_queue.log_call_with_result (wait);
-    // fut.get();
+  work_item *finish_work = new work_item (finisher,s);
 
-    // log the call.
-    m_private_queue.log_call ([=](std::queue<int> *q) {
-        q->push(i);
+  qoq->add(s);
+  s->add (finish_work);
+  s->add_end();
+}
+
+
+void consumer_body (qoq *qoq, serializer *s, int i) {
+  if (i < max_iters) {
+    if (shared_queue.empty()) {
+      auto f = std::function<void()> ([=](){
+          consumer_body(qoq, s, i);
+        });
+      auto work = new work_item (f, s);
+      
+      qoq->add (s);
+      s->add (work);      
+      s->add_end();      
+    } else {
+      shared_queue.pop();
+      auto f = std::function<void()> ([i, qoq, s](){
+          consumer_body (qoq, s, i+1);
+        });
+      auto work = new work_item (f, s);
+      
+      qoq->add (s);
+      s->add (work);      
+      s->add_end();
+    }
+  } else {
+    auto finisher = std::function<void()> ([](){
+        q.push(true);
       });
     
-    // end the queue
-    m_private_queue.unlock();
-  }
-
-};
-
-
-class consumer {
-public:
-  separate <std::queue <int> > *m_queue;
-  private_queue <std::queue <int>> m_private_queue;
-
-  consumer (separate <std::queue <int> >* queue):
-    m_private_queue (queue->make_queue())
-  {
-    m_queue = queue;
-  }
-
-  void live() {
-    for (int i = 0; i < max_iters; i++) {
-      // std::cout << "consumer run " << i << std::endl;
-      run ();
-    }
-    std::cout << "done consuming" << std::endl;
-  }
-
-  void run() {
-    processor *p = &m_queue->m_proc;
-    bool wait_cond;
-
-    // Lock the processor and check the wait-condition.
-    // auto l_queue = m_queue->lock();
-    m_queue->lock_with (m_private_queue);
-    
-    std::function <bool(std::queue<int> *)> wait_func = [](std::queue<int> *q) {
-      return !q->empty();
-    };
-
-    // auto fut = l_queue.log_call_with_result (wait_func);
-    wait_cond = m_private_queue.log_call_with_result (wait_func);
-
-    // If the wait-condition isn't satisfied, wait and recheck
-    // when we're woken up (by another thread).
-    while (!wait_cond) {
-      // l_queue.unlock();
-      m_private_queue.unlock();
-      p->wait_until_available();
-      // l_queue = m_queue->lock();
-      m_queue->lock_with (m_private_queue);
-
-      // auto fut = l_queue.log_call_with_result (wait_func);
-      wait_cond = m_private_queue.log_call_with_result (wait_func);
-    }
-        
-    // log the call with result.
-    std::function<int (std::queue<int> *)> f = [](std::queue<int> *q) {
-      int tmp = q->front();
-      q->pop();
-      return tmp;
-    };
-
-    // std::future <int> res = l_queue.log_call_with_result (f);
-    int res = m_private_queue.log_call_with_result (f);
-
-    // end the queue
-    // l_queue.unlock();
-    m_private_queue.unlock ();
-  }
+    work_item *finish_work = new work_item (finisher,s);
   
-};
+    qoq->add(s);
+    s->add (finish_work);
+    s->add_end();    
+  }
+}
 
-int main (int argc, char** argv) {
+void spawn_consumer_thread(qoq *qoq) {
+  serializer *s = new serializer();
+
+  auto f = std::function<void()> ([qoq, s](){
+      consumer_body (qoq, s, 0);
+    });
+  auto work = new work_item (f, s);
+      
+  qoq->add (s);
+  s->add (work);
+  s->add_end();
+}
+
+int main( int argc, char** argv )
+{
   max_iters = atoi(argv[1]);
-  auto max_each = atoi(argv[2]);
-  std::vector <std::future <bool> > workers;
-  auto q = new std::queue <int>() ;
-  separate <std::queue <int> > queue (q);
+  auto num_workers = atoi(argv[2]);  
 
-  g_processors.push_back (&queue.m_proc);
+  auto qoqs = qoq();
 
-  for (int i = 0; i < max_each; i++) {
-    workers.push_back 
-      (std::async 
-       (std::launch::async,
-        [&queue]() {
-         producer p (&queue);
-         p.live();
-         return true;
-       }));
+  for (int i = 0; i < num_workers; ++i)
+    {
+      new std::thread([&qoqs](){spawn_producer_thread (&qoqs);});
+      new std::thread([&qoqs](){spawn_consumer_thread (&qoqs);});
+    }
 
-    workers.push_back 
-      (std::async 
-       (std::launch::async,
-        [&queue]() {
-         consumer p (&queue);
-         p.live();
-         return true;
-       }));
-  }
-  
-  for (auto& worker : workers) {
-    worker.get();
-  }
+  bool done;
 
-  // example of final shutdown, this should be done by the GC in a real
-  // implementation.
-  for (auto& proc : g_processors) {
-    proc->shutdown ();
-    proc->join();
+  for (int i = 0; i < 2*num_workers; ++i) {
+    q.pop(done);
+    std::cout << i << std::endl;
   }
 
   return 0;

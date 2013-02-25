@@ -20,9 +20,9 @@ public:
 
 class run_work_item: public tbb::task {
   task* execute();
-  work_item* item;
+  work_item *item;
 public:
-  run_work_item (work_item* item_);
+  run_work_item (work_item *item_);
 };
 
 #endif

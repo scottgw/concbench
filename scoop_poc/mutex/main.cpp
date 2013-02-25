@@ -15,12 +15,11 @@ int x = 0;
 
 void spawn_worker_thread (qoq *qoq) {
   serializer *s = new serializer();
-  work_item *work;
-  auto f = std::function<void()> ([](){x++;});
 
   for (int i = 0; i < num_elems; ++i)
     { 
-      work = new work_item (f, s);
+      auto f = std::function<void()> ([](){x++;});
+      auto work = new work_item (f, s);
       qoq->add (s);
       s->add (work);      
       s->add_end();
@@ -30,8 +29,10 @@ void spawn_worker_thread (qoq *qoq) {
       q.push(true);
     });
 
+  work_item *finish_work = new work_item (finisher,s);
+
   qoq->add(s);
-  s->add (new work_item (finisher, s));
+  s->add (finish_work);
   s->add_end();
 }
 

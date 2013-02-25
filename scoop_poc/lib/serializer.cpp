@@ -7,7 +7,7 @@ serializer::serializer() {
   count.store(1);
 }
 
-void serializer::add(work_item* work)
+void serializer::add(work_item *work)
 {
   q.push(work);
   int new_count = ++count;
@@ -28,12 +28,12 @@ void serializer::start()
 
 void serializer::move_to_ready_pile()
 {
-  work_item* work = NULL;
+  work_item *work;
   q.try_pop(work);
-  if (work != NULL) {
-    tbb::task::enqueue(*new(tbb::task::allocate_root()) run_work_item (work));
-  } else {
+  if (work == NULL) {
     parent->note_completion();
+  } else {
+    tbb::task::enqueue(*new(tbb::task::allocate_root()) run_work_item (work));
   }
 }
 

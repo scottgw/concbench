@@ -20,7 +20,7 @@ class serializer {
 public:
   serializer();
 
-  void add(work_item* work);
+  void add(work_item*);
   
   void add_end ();
 
