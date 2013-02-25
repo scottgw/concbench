@@ -1,7 +1,7 @@
 CFLAGS=-pthread -ltbb -std=c++11 -rdynamic -g -I../include -Wall
 
-main: main.cpp ../include/processor.h ../include/private_queue.h ../include/separate.h
-	g++ main.cpp -o main ${CFLAGS} -O3
+main: main.cpp ../include/serializer.h ../include/qoq.h ../include/work_item.h
+	g++ main.cpp ../lib/libqoq.a -o main ${CFLAGS} -O3
 
 clean:
 	@rm -f main

@@ -4,144 +4,19 @@
 #include <functional>
 #include <thread>
 
-#include <tbb/task.h>
 #include <tbb/concurrent_queue.h>
 
-using namespace tbb;
-using namespace std;
-
-class work_item;
-
-class run_work_item: public task {
-  task* execute();
-  work_item* item;
-public:
-  run_work_item (work_item* item_): item(item_) {}
-};
-
-typedef concurrent_queue<work_item*> work_queue;
-
-class qoq;
-
-class serializer {
-  work_queue q;
-  tbb::atomic<int> count;
-
-  void move_to_ready_pile();
-
-public:
-  serializer() {
-    count.store(1);
-  }
-
-  void add(work_item* work)
-  {
-    q.push(work);
-    int new_count = ++count;
-    if (new_count == 1)
-      move_to_ready_pile();
-  }
-  
-  void add_end () {
-    add (NULL);
-  }
-
-  void start()
-  {
-    if (--count >= 1) { // is this right, double starts?
-      move_to_ready_pile();
-    }
-  }
-  void note_completion();
-  qoq *parent;
-};
-
-class qoq {
-  concurrent_queue <serializer*> big_queue;
-  tbb::atomic<int> count;
-
-public:
-  qoq(): big_queue() {
-    count.store(0);
-  }
-
-  void add(serializer *s)
-  {
-    s->parent = this;
-    big_queue.push(s);
-    if (++count == 1)
-      start_sub_queue();
-  }
-
-  void note_completion() {
-    if (--count != 0)
-      start_sub_queue();
-  }
-
-  void start_sub_queue()
-  {
-    serializer *s = NULL;
-    big_queue.try_pop (s);
-    assert (s);
-    s->start();
-  }
-};
-
-
-
-
-class work_item {
-  function<void()> f;
-  
-  serializer* s;
-public:
-  void run() {
-    serializer* tmp_s = s;
-    f();
-    delete this;
-    tmp_s->note_completion();
-  }
-
-public:
-  work_item (decltype(f) &f_, serializer* s_): f(f_), s(s_) 
-  {
-  }
-};
-
-void serializer::move_to_ready_pile()
-  {
-    work_item* work = NULL;
-    q.try_pop(work);
-    if (work != NULL) {
-      task::enqueue(*new(task::allocate_root()) run_work_item (work));
-    } else {
-      parent->note_completion();
-    }
-  }
-
-
-void serializer::note_completion() {
-  if (--count != 0)
-    move_to_ready_pile();
-}
-
-
-task* run_work_item::execute()
-{
-  assert (item != NULL);
-  item->run();
-  return NULL;
-}
+#include "serializer.h"
+#include "qoq.h"
 
 int num_elems;
-concurrent_bounded_queue<bool> q;  
+tbb::concurrent_bounded_queue<bool> q;  
 int x = 0;
 
 void spawn_worker_thread (qoq *qoq) {
   serializer *s = new serializer();
   work_item *work;
-  auto f = function<void()> ([](){x++;});
-
+  auto f = std::function<void()> ([](){x++;});
 
   for (int i = 0; i < num_elems; ++i)
     { 
@@ -151,7 +26,7 @@ void spawn_worker_thread (qoq *qoq) {
       s->add_end();
     }
 
-  auto finisher = function<void()> ([](){
+  auto finisher = std::function<void()> ([](){
       q.push(true);
     });
 
@@ -176,8 +51,8 @@ int main( int argc, char** argv )
 
   for (int i = 0; i < num_workers; ++i) {
     q.pop(done);
-    cout << i << endl;
+    std::cout << i << std::endl;
   }
     
-  cout << x << endl;
+  std::cout << x << std::endl;
 }
