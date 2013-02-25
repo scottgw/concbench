@@ -42,29 +42,46 @@ void spawn_producer_thread (qoq *qoq) {
   s->add_end();
 }
 
+std::atomic<int> retries;
 
-void consumer_body (qoq *qoq, serializer *s, int i) {
+void consumer_body (qoq *qoq, serializer *s, int i);
+
+void consumer_wait_body (qoq *qoq, serializer *s, int i) 
+{
+  // executed from qoq
+  if (shared_queue.empty()) {
+    // finish this serializer, it should be the last in the
+    // currently executed serializer.
+    s->add_end();
+
+    consumer_body (qoq, s, i);
+    // ++retries;
+  } else { 
+    // there's something in the queue
+    // we'll put a new job on to fetch the item (which we know is there)
+    // terminate the serializer and loop back.
+    auto f = std::function<void()> ([s, qoq, i](){
+        shared_queue.pop();
+        s->add_end();
+        consumer_body (qoq, s, i+1);
+      });
+    auto work = new work_item (f, s);
+    
+    s->add (work);
+  }  
+}
+
+void consumer_body (qoq *qoq, serializer *s, int i) 
+{
   if (i < max_iters) {
-    if (shared_queue.empty()) {
-      auto f = std::function<void()> ([=](){
-          consumer_body(qoq, s, i);
-        });
-      auto work = new work_item (f, s);
-      
-      qoq->add (s);
-      s->add (work);      
-      s->add_end();      
-    } else {
-      shared_queue.pop();
-      auto f = std::function<void()> ([i, qoq, s](){
-          consumer_body (qoq, s, i+1);
-        });
-      auto work = new work_item (f, s);
-      
-      qoq->add (s);
-      s->add (work);      
-      s->add_end();
-    }
+    auto f = std::function<void()> ([=](){
+        consumer_wait_body (qoq, s, i);
+      });
+    
+    work_item *work = new work_item (f, s);
+  
+    qoq->add(s);
+    s->add (work);
   } else {
     auto finisher = std::function<void()> ([](){
         q.push(true);
@@ -74,34 +91,27 @@ void consumer_body (qoq *qoq, serializer *s, int i) {
   
     qoq->add(s);
     s->add (finish_work);
-    s->add_end();    
+    s->add_end();
   }
 }
 
 void spawn_consumer_thread(qoq *qoq) {
   serializer *s = new serializer();
 
-  auto f = std::function<void()> ([qoq, s](){
-      consumer_body (qoq, s, 0);
-    });
-  auto work = new work_item (f, s);
-      
-  qoq->add (s);
-  s->add (work);
-  s->add_end();
+  consumer_body (qoq, s, 0);
 }
 
 int main( int argc, char** argv )
 {
   max_iters = atoi(argv[1]);
   auto num_workers = atoi(argv[2]);  
-
   auto qoqs = qoq();
+  retries.store(0);
 
   for (int i = 0; i < num_workers; ++i)
     {
-      new std::thread([&qoqs](){spawn_producer_thread (&qoqs);});
       new std::thread([&qoqs](){spawn_consumer_thread (&qoqs);});
+      new std::thread([&qoqs](){spawn_producer_thread (&qoqs);});
     }
 
   bool done;
@@ -110,6 +120,8 @@ int main( int argc, char** argv )
     q.pop(done);
     std::cout << i << std::endl;
   }
+
+  std::cout << retries.load() << std::endl;
 
   return 0;
 }

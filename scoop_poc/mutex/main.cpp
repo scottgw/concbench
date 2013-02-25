@@ -18,14 +18,20 @@ void spawn_worker_thread (qoq *qoq) {
 
   for (int i = 0; i < num_elems; ++i)
     { 
-      auto f = std::function<void()> ([](){x++;});
+      // s = new serializer();
+      auto f = std::function<void()> ([](){
+          std::cout << "incrment\n";
+          x++;
+        });
       auto work = new work_item (f, s);
       qoq->add (s);
       s->add (work);      
       s->add_end();
     }
 
+  // s = new serializer();
   auto finisher = std::function<void()> ([](){
+      std::cout << "push\n";
       q.push(true);
     });
 

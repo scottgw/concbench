@@ -9,10 +9,11 @@
 class serializer;
 
 class work_item {
-  std::function<void()> f;
   
   serializer* s;
 public:
+  std::function<void()> f;
+
   work_item (decltype(f) &f_, serializer* s_);
 
   void run();

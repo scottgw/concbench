@@ -17,6 +17,8 @@ class serializer {
 
   void move_to_ready_pile();
 
+  bool move_to_ready_no_task();
+
 public:
   serializer();
 
@@ -24,9 +26,9 @@ public:
   
   void add_end ();
 
-  void start();
+  bool start();
 
-  void note_completion();
+  bool note_completion();
   qoq *parent;
 };
 

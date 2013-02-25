@@ -11,18 +11,26 @@ void qoq::add(serializer *s)
   s->parent = this;
   big_queue.push(s);
   if (++count == 1)
-    start_sub_queue();
+    if (start_sub_queue()) // if there's more left
+      {
+        note_completion();
+      }
+      
 }
 
 void qoq::note_completion() {
-  if (--count != 0)
-    start_sub_queue();
+  while (--count != 0) {
+    if (start_sub_queue())
+      return;
+  }
+
+  task_running = false;
 }
 
-void qoq::start_sub_queue()
+bool qoq::start_sub_queue()
 {
   serializer *s = NULL;
   big_queue.try_pop (s);
   assert (s);
-  s->start();
+  return s->start();
 }
