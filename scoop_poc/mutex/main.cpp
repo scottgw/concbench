@@ -10,20 +10,16 @@
 using namespace tbb;
 using namespace std;
 
-class work_item_i {
-public:
-  work_item_i() {}
-  virtual void run() = 0;
-};
+class work_item;
 
 class run_work_item: public task {
   task* execute();
-  work_item_i* item;
+  work_item* item;
 public:
-  run_work_item (work_item_i* item_): item(item_) {}
+  run_work_item (work_item* item_): item(item_) {}
 };
 
-typedef concurrent_queue<work_item_i*> work_queue;
+typedef concurrent_queue<work_item*> work_queue;
 
 class qoq;
 
@@ -38,7 +34,7 @@ public:
     count.store(1);
   }
 
-  void add(work_item_i* work)
+  void add(work_item* work)
   {
     q.push(work);
     int new_count = ++count;
@@ -94,10 +90,11 @@ public:
 
 
 
-class work_item: public work_item_i {
+class work_item {
   function<void()> f;
   
   serializer* s;
+public:
   void run() {
     serializer* tmp_s = s;
     f();
@@ -106,14 +103,14 @@ class work_item: public work_item_i {
   }
 
 public:
-  work_item (decltype(f) &f_, serializer* s_): work_item_i(), f(f_), s(s_) 
+  work_item (decltype(f) &f_, serializer* s_): f(f_), s(s_) 
   {
   }
 };
 
 void serializer::move_to_ready_pile()
   {
-    work_item_i* work = NULL;
+    work_item* work = NULL;
     q.try_pop(work);
     if (work != NULL) {
       task::enqueue(*new(task::allocate_root()) run_work_item (work));
