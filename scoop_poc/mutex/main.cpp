@@ -30,7 +30,6 @@ class qoq;
 class serializer {
   work_queue q;
   tbb::atomic<int> count;
-  std::atomic_bool spawned;
 
   void move_to_ready_pile();
 
@@ -57,14 +56,7 @@ public:
       move_to_ready_pile();
     }
   }
-
-  void note_completion() {
-    if (--count != 0)
-      move_to_ready_pile();
-    // else
-    //   spawned.store(false);
-  }
-
+  void note_completion();
   qoq *parent;
 };
 
@@ -73,6 +65,10 @@ class qoq {
   tbb::atomic<int> count;
 
 public:
+  qoq(): big_queue() {
+    count.store(0);
+  }
+
   void add(serializer *s)
   {
     s->parent = this;
@@ -90,7 +86,6 @@ public:
   {
     serializer *s = NULL;
     big_queue.try_pop (s);
-    // cout << "starting sub queue " << s << "\n";
     assert (s);
     s->start();
   }
@@ -104,7 +99,6 @@ class work_item: public work_item_i {
   
   serializer* s;
   void run() {
-    // cout << "processing queue item\n";
     f();
     // delete this;
     s->note_completion();
@@ -113,28 +107,26 @@ class work_item: public work_item_i {
 public:
   work_item (decltype(f) &f_, serializer* s_): work_item_i(), f(f_), s(s_) 
   {
-
   }
 };
 
 void serializer::move_to_ready_pile()
   {
-    // cout << "spawning off task\n";
     work_item_i* work = NULL;
     q.try_pop(work);
     if (work != NULL) {
-      // if (spawned.load()) {
-      //   work->run();
-      // } else {
-      //   spawned.store (true);
       task::enqueue(*new(task::allocate_root()) run_work_item (work));
-      // }
-    }
-    else {
-      // spawned.store (false);
+    } else {
       parent->note_completion();
     }
   }
+
+
+void serializer::note_completion() {
+  if (--count != 0)
+    move_to_ready_pile();
+}
+
 
 task* run_work_item::execute()
 {
@@ -165,7 +157,6 @@ void spawn_worker_thread (qoq *qoq) {
     }
 
   auto finisher = function<void()> ([](){
-      // cout << "prepush\n";
       q.push(true);
     });
   s = new serializer();
