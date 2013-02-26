@@ -34,18 +34,10 @@ void qoq::complete_task(serializer *s)
   do
     {
       bool cancelled = false;
-      int new_sub_count = --(s->count);
-      while (new_sub_count != 0 && !cancelled)
+      // int new_sub_count = --(s->count);
+      while (!cancelled && --(s->count) != 0)
         {
-          // std::cout << "subcount is " << new_sub_count << std::endl;
           cancelled = s->move_to_ready_no_task();
-          if (cancelled) {
-            // std::cout << "cancelled\n";
-            // break;
-          } else {
-            // std::cout << "decrementing\n";
-            new_sub_count = --(s->count);
-          }
         }
       
       // we just plain return because we're out of work and
