@@ -13,22 +13,23 @@ typedef tbb::concurrent_queue<work_item*> work_queue;
 
 class serializer {
   work_queue q;
-  tbb::atomic<int> count;
 
   void move_to_ready_pile();
 
-  bool move_to_ready_no_task();
-
 public:
+  tbb::atomic<int> count;
+
   serializer();
+
+  bool move_to_ready_no_task();
 
   void add(work_item*);
   
   void add_end ();
 
-  bool start();
+  void start();
 
-  bool note_completion();
+  /* bool note_completion(); */
   qoq *parent;
 };
 

@@ -12,15 +12,15 @@ class qoq {
   tbb::atomic<int> count;
 
 public:
-  bool task_running = false;
-
   qoq();
 
   void add(serializer *s);
 
   void note_completion();
 
-  bool start_sub_queue();
+  void start_sub_queue();
+
+  void complete_task (serializer*);
 
 };
 #endif
