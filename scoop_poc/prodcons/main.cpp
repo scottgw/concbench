@@ -7,6 +7,7 @@
 
 #include <tbb/concurrent_queue.h>
 
+#include "one_off.h"
 #include "serializer.h"
 #include "qoq.h"
 
@@ -63,7 +64,12 @@ void consumer_wait_body (qoq *qoq, serializer *s, int i)
     auto f = std::function<void()> ([s, qoq, i](){
         shared_queue.pop();
         s->add_end();
-        consumer_body (qoq, s, i+1);
+        
+        auto next_body = std::function<void()> ([s, qoq, i](){
+            consumer_body (qoq, s, i+1);
+          });
+
+        one_off (next_body);
       });
     auto work = new work_item (f, s);
     
@@ -110,8 +116,8 @@ int main( int argc, char** argv )
 
   for (int i = 0; i < num_workers; ++i)
     {
-      new std::thread([&qoqs](){spawn_consumer_thread (&qoqs);});
-      new std::thread([&qoqs](){spawn_producer_thread (&qoqs);});
+      one_off([&qoqs](){spawn_consumer_thread (&qoqs);});
+      one_off([&qoqs](){spawn_producer_thread (&qoqs);});
     }
 
   bool done;
@@ -121,7 +127,7 @@ int main( int argc, char** argv )
     std::cout << i << std::endl;
   }
 
-  std::cout << retries.load() << std::endl;
+  std::cout << shared_queue.size() << std::endl;
 
   return 0;
 }

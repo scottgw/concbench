@@ -8,6 +8,7 @@
 
 #include "serializer.h"
 #include "qoq.h"
+#include "one_off.h"
 
 int num_elems;
 tbb::concurrent_bounded_queue<bool> q;  
@@ -52,7 +53,7 @@ int main( int argc, char** argv )
 
   for (int i = 0; i < num_workers; ++i)
     {
-      new std::thread([=](){spawn_worker_thread (qoqs);});
+      one_off([=](){spawn_worker_thread (qoqs);});
     }
 
   bool done;
