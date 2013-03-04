@@ -5,179 +5,97 @@
 #include <assert.h>
 #include <cstdlib>
 
-#include "separate.h"
-#include "private_queue.h"
-#include "processor.h"
+#include <tbb/concurrent_queue.h>
 
-std::vector <processor*> g_processors;
+#include "one_off.h"
+#include "serializer.h"
+#include "qoq.h"
 
+int x = 0;
 int max_iters = 5000;
+tbb::concurrent_bounded_queue<bool> q;
+void worker_body (int signal, qoq *qoq, serializer *s, int i);
 
-class producer {
-public:
-  separate <int> *m_var;
-  private_queue <int> m_private_queue;
+void worker_wait_body (int signal, qoq *qoq, serializer *s, int i) 
+{
+  // executed from qoq
+  if (x % 2 == signal) {
+    // finish this serializer, it should be the last in the
+    // currently executed serializer.
+    s->add_end();
 
-  producer (separate <int> *var) : 
-    m_private_queue (var->make_queue()) 
-  {
-    m_var = var;
-  }
-
-  void live() {
-    for (int i = 0; i < max_iters; i++) {
-      // std::cout << "producer run: " << i << std::endl;
-      run ();
-    }
-    std::cout << "done producing" << std::endl;
-  }
-
-  void run() {
-    processor *p = &m_var->m_proc;
-    bool wait_cond;
-
-    // Lock the processor and check the wait-condition.
-    // auto l_queue = m_queue->lock();
-    m_var->lock_with (m_private_queue);
-    
-    std::function <bool(int *)> wait_func = [](int *x) {
-      return *x % 2 == 1;
-    };
-
-    // auto fut = l_queue.log_call_with_result (wait_func);
-    wait_cond = m_private_queue.log_call_with_result (wait_func);
-
-    // If the wait-condition isn't satisfied, wait and recheck
-    // when we're woken up (by another thread).
-    while (!wait_cond) {
-      // l_queue.unlock();
-      m_private_queue.unlock();
-      p->wait_until_available();
-      // l_queue = m_queue->lock();
-      m_var->lock_with (m_private_queue);
-
-      // auto fut = l_queue.log_call_with_result (wait_func);
-      wait_cond = m_private_queue.log_call_with_result (wait_func);
-    }
+    worker_body (signal, qoq, s, i);
+    // ++retries;
+  } else { 
+    // there's something in the queue
+    // we'll put a new job on to fetch the item (which we know is there)
+    // terminate the serializer and loop back.
+    auto f = std::function<void()> ([signal, s, qoq, i](){
+        x++;
+        s->add_end();
         
-    // log the call with result.
-    std::function<void(int *)> f = [](int *x) {
-      (*x)++;
-    };
+        auto next_body = std::function<void()> ([signal, s, qoq, i](){
+            worker_body (signal, qoq, s, i+1);
+          });
 
-    // std::future <int> res = l_queue.log_call_with_result (f);
-    m_private_queue.log_call (f);
-
-    // end the queue
-    // l_queue.unlock();
-    m_private_queue.unlock ();
-  }
-
-};
-
-
-class consumer {
-public:
-  separate <int> *m_var;
-  private_queue <int> m_private_queue;
-
-  consumer (separate <int>* var):
-    m_private_queue (var->make_queue())
-  {
-    m_var = var;
-  }
-
-  void live() {
-    for (int i = 0; i < max_iters; i++) {
-      // std::cout << "consumer run " << i << std::endl;
-      run ();
-    }
-    std::cout << "done consuming" << std::endl;
-  }
-
-  void run() {
-    processor *p = &m_var->m_proc;
-    bool wait_cond;
-
-    // Lock the processor and check the wait-condition.
-    // auto l_queue = m_queue->lock();
-    m_var->lock_with (m_private_queue);
+        one_off (next_body);
+      });
+    auto work = new work_item (f, s);
     
-    std::function <bool(int *)> wait_func = [](int *x) {
-      return *x % 2 == 0;
-    };
+    s->add (work);
+  }  
+}
 
-    // auto fut = l_queue.log_call_with_result (wait_func);
-    wait_cond = m_private_queue.log_call_with_result (wait_func);
-
-    // If the wait-condition isn't satisfied, wait and recheck
-    // when we're woken up (by another thread).
-    while (!wait_cond) {
-      // l_queue.unlock();
-      m_private_queue.unlock();
-      p->wait_until_available();
-      // l_queue = m_queue->lock();
-      m_var->lock_with (m_private_queue);
-
-      // auto fut = l_queue.log_call_with_result (wait_func);
-      wait_cond = m_private_queue.log_call_with_result (wait_func);
-    }
-        
-    // log the call with result.
-    std::function<void(int *)> f = [](int *x) {
-      (*x)++;
-    };
-
-    // std::future <int> res = l_queue.log_call_with_result (f);
-    m_private_queue.log_call (f);
-
-    // end the queue
-    // l_queue.unlock();
-    m_private_queue.unlock ();
-  }
+void worker_body (int signal, qoq *qoq, serializer *s, int i) 
+{
+  if (i < max_iters) {
+    auto f = std::function<void()> ([=](){
+        worker_wait_body (signal, qoq, s, i);
+      });
+    
+    work_item *work = new work_item (f, s);
   
-};
+    qoq->add(s);
+    s->add (work);
+  } else {
+    auto finisher = std::function<void()> ([](){
+        q.push(true);
+      });
+    
+    work_item *finish_work = new work_item (finisher,s);
+  
+    qoq->add(s);
+    s->add (finish_work);
+    s->add_end();
+  }
+}
 
-int main (int argc, char** argv) {
+void spawn_worker_thread(qoq *qoq, int signal) {
+  serializer *s = new serializer();
+
+  worker_body (signal, qoq, s, 0);
+}
+
+int main( int argc, char** argv )
+{
   max_iters = atoi(argv[1]);
-  auto max_each = atoi(argv[2]);
-  std::vector <std::future <bool> > workers;
-  int *x = new int;
-  *x = 0;
-  separate <int> var (x);
+  auto num_workers = atoi(argv[2]);  
+  auto qoqs = qoq();
 
-  g_processors.push_back (&var.m_proc);
+  for (int i = 0; i < num_workers; ++i)
+    {
+      one_off([&qoqs](){spawn_worker_thread (&qoqs, 0);});
+      one_off([&qoqs](){spawn_worker_thread (&qoqs, 1);});
+    }
 
-  for (int i = 0; i < max_each; i++) {
-    workers.push_back 
-      (std::async 
-       (std::launch::async,
-        [&var]() {
-         producer p (&var);
-         p.live();
-         return true;
-       }));
+  bool done;
 
-    workers.push_back 
-      (std::async 
-       (std::launch::async,
-        [&var]() {
-         consumer p (&var);
-         p.live();
-         return true;
-       }));
-  }
-  
-  for (auto& worker : workers) {
-    worker.get();
+  for (int i = 0; i < 2*num_workers; ++i) {
+    q.pop(done);
+    std::cout << i << std::endl;
   }
 
-  // example of final shutdown, this should be done by the GC in a real
-  // implementation.
-  for (auto& proc : g_processors) {
-    proc->shutdown ();
-    proc->join();
-  }
-  std::cout << *x << std::endl;
+  std::cout << x << std::endl;
+
   return 0;
 }

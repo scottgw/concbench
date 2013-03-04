@@ -55,7 +55,7 @@ void consumer_wait_body (qoq *qoq, serializer *s, int i)
     // currently executed serializer.
     s->add_end();
 
-    consumer_body (qoq, s, i);
+    one_off ([=](){consumer_body (qoq, s, i);});
     // ++retries;
   } else { 
     // there's something in the queue
