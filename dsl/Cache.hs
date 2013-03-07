@@ -2,9 +2,6 @@
 
 import Control.Monad
 
-import Data.IORef
-import Data.List (foldl')
-
 import qualified Data.Vector.Mutable as MV
 import qualified Data.Vector.Unboxed.Mutable as UMV
 
@@ -12,6 +9,7 @@ import           System.TimeIt
 
 import           System.Environment
 
+bigMult :: Int
 bigMult = 1024
 
 type MemType = MV.IOVector (UMV.IOVector Int)
@@ -31,6 +29,7 @@ unfriendlyAlloc size = do
   print (MV.length bigVector)
   return bigVector
 
+memTask :: MemType -> IO ()
 memTask mem =
     let subTask v = 
             forM_ [0 .. UMV.length v - 1] $ \ i ->
@@ -38,11 +37,12 @@ memTask mem =
     in forM_ [0 .. MV.length mem - 1] $ \ i ->
         MV.unsafeRead mem i >>= subTask
 
+main :: IO ()
 main = do
   args : _ <- getArgs
   !mem <- case args of
             "f" -> friendlyAlloc 512
             _ -> unfriendlyAlloc 512
-  (time, !a) <- timeItT (memTask mem)
+  (time, _a) <- timeItT (memTask mem)
   print time
   return  ()
