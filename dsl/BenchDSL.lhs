@@ -9,6 +9,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TemplateHaskell #-}
 
 import           Control.Applicative
 import           Control.Concurrent
@@ -19,6 +20,10 @@ import           Data.Time.Clock
 import qualified Data.Vector.Unboxed.Mutable as V
 
 import           System.Environment
+
+import           Test.QuickCheck
+import           Test.QuickCheck.All (quickCheckAll)
+import           Test.QuickCheck.Monadic
 \end{code}
 
 A benchmark is a task that produces quantifable results.
@@ -188,7 +193,56 @@ timeAction act = do
   t2 <- getCurrentTime
   let diff = fromRational $ toRational (t2 `diffUTCTime` t1)
   return (diff, r)
+\end{code}
 
+Simple compositional benchmarks
+\begin{code}
+
+data Bench where
+    BenAtom :: IO () -> Bench
+    BenSeq  :: Bench -> Bench -> Bench
+
+instance Show Bench where
+    show (BenAtom f) = "<atom>"
+    show (BenSeq b1 b2) = show b1 ++ "; " ++ show b2
+
+fib :: Int -> IO Int
+fib n | n > 1     = (+) <$> fib (n-1) <*> fib (n-2)
+      | otherwise = return 1
+
+compileBench :: Bench -> IO ()
+compileBench (BenAtom act)  = act
+compileBench (BenSeq b1 b2) = compileBench b1 >> compileBench b2
+
+timeBench :: Bench -> IO Double
+timeBench b = fst <$> (timeAction $ compileBench b)
+
+instance Arbitrary Bench where
+    arbitrary = sized benchSeq
+        where benchSeq 0 = return (BenAtom (void $ fib 20))
+              benchSeq n = BenSeq (BenAtom (void $ fib 20)) <$> (benchSeq (n-1))
+    shrink (BenSeq a b) = [a,b]
+    shrink a            = [a]
+
+timeEstimation :: Bench -> IO Double
+timeEstimation (BenSeq a b)  = (+) <$> timeEstimation a <*> timeEstimation b
+timeEstimation (BenAtom act) = timeBench (BenAtom act)
+\end{code}
+
+Random checking of tests
+\begin{code}
+
+
+prop_trivial = 
+    \ b -> monadicIO $ do
+        res <- run (threshold <$> timeEstimation b <*> timeBench b)
+        assert res
+    where threshold a b = abs (b - a) < 1
+
+
+runTests = $quickCheckAll
+
+main = runTests
 -- mutex2 :: B' (MVar ()) ()
 -- mutex2 = MkB' (MkMem (newMVar ())) (MkExec 
 \end{code}
