@@ -11,6 +11,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 
 import           Control.Applicative
 import           Control.Concurrent
@@ -18,7 +19,13 @@ import           Control.Monad.IO.Class
 import           Control.Monad
 
 import           Data.Time.Clock
-import qualified Data.Vector.Unboxed.Mutable as V
+import qualified Data.Traversable as Traverse
+import qualified Data.Set as Set
+import qualified Data.Vector as V
+import qualified Data.Vector.Unboxed as UV
+import qualified Data.Vector.Unboxed.Mutable as UVM
+
+import qualified Statistics.Sample as Stats
 
 import           System.Environment
 
@@ -74,35 +81,14 @@ so it should be relaxed to some $\epsilon$.
 
 \begin{code}
 type Lock = MVar ()
-type Memory = V.IOVector Int
-
-exclusion :: Lock -> BenchmarkT a
-exclusion l task = lock l *> task <* unlock l
-
-(+<) :: BenchmarkT a -> BenchmarkT a -> BenchmarkT a
-(+<) = flip (.)
+type Memory = UVM.IOVector Int
 
 memory_access :: Memory -> Benchmark ()
 memory_access mem = 
-  forM_ [0 .. V.length mem] $ \i -> liftIO $ do
-    x <- V.unsafeRead mem i
-    V.unsafeWrite mem i ((x+i)*i)
-
-lock    :: Lock -> Benchmark ()
-lock    = void . liftIO . takeMVar
-
-unlock  :: Lock -> Benchmark ()
-unlock  = void . liftIO . flip putMVar ()  
+  forM_ [0 .. UVM.length mem] $ \i -> liftIO $ do
+    x <- UVM.unsafeRead mem i
+    UVM.unsafeWrite mem i ((x+i)*i)
 \end{code}
-From these we shoudl be able to start constructing a more
-complicated version of the basic mutual exclusion, for example:
-\begin{code}
-complicated_exclusion :: Benchmark () -> Lock -> Benchmark ()
-complicated_exclusion memTask lk = do
-  exclusion lk memTask
-  memTask
-\end{code}
-
 \begin{code}
 (|||) :: Benchmark () -> Benchmark () -> Benchmark ()
 Benchmark b1 ||| Benchmark b2 = Benchmark $ liftIO $ do
@@ -111,18 +97,6 @@ Benchmark b1 ||| Benchmark b2 = Benchmark $ liftIO $ do
   b2
   takeMVar barrier
 \end{code}
-
-\begin{code}
-main2 :: IO ()
-main2 = do
-  [size] <- getArgs
-  mem <- V.replicate (read size) (0 :: Int)
-  [lk1, lk2, lk3] <- forM [(1::Int) .. 3] (const (newMVar ()))
-  let excl = complicated_exclusion (memory_access mem)
-  runtime (excl lk1 ||| excl lk2 ||| excl lk3) >>= print
-  -- V.unsafeRead mem (read size - 1) >>= print
-\end{code}
-
 
 
 \begin{code}
@@ -200,12 +174,16 @@ Simple compositional benchmarks
 \begin{code}
 
 data Bench where
-    BenAtom :: IO () -> Bench
-    BenSeq  :: !Bench -> !Bench -> Bench
-    BenPar  :: !Bench -> !Bench -> Bench
+    BenFib   :: Bench
+    BenLock1 :: Lock -> Bench -> Bench
+    BenLock2 :: Lock -> Bench -> Bench
+    BenSeq   :: !Bench -> !Bench -> Bench
+    BenPar   :: !Bench -> !Bench -> Bench
 
 instance Show Bench where
-    show (BenAtom f) = "<atom>"
+    show BenFib = "fib"
+    show (BenLock1 _l b) = concat ["lock1(", show b, ")"]
+    show (BenLock2 _l b) = concat ["lock2(", show b, ")"]
     show (BenSeq b1 b2) = concat ["(", show b1, ") ; (", show b2,")"]
     show (BenPar b1 b2) = concat ["(", show b1, ") ||| (", show b2,")"]
 
@@ -214,13 +192,23 @@ fib n | n > 1     = fib (n-1) + fib (n-2)
       | otherwise = 1
                     
 {-# NOINLINE fibM #-}
+fibM :: Monad m => Int -> m ()
 fibM n =
-  let !x = fib n
+  let !_x = fib n
   in return ()
+
+lock    :: Lock -> IO ()
+lock    = void . takeMVar
+
+unlock  :: Lock -> IO ()
+unlock  = void . flip putMVar ()  
+
 
 {-# NOINLINE compileBench #-}
 compileBench :: Bench -> IO ()
-compileBench (BenAtom act)  = fibM 37
+compileBench BenFib  = fibM 30
+compileBench (BenLock1 l b) = lock l >> compileBench b >> unlock l
+compileBench (BenLock2 l b) = lock l >> compileBench b >> unlock l
 compileBench (BenSeq b1 b2) = compileBench b1 >> compileBench b2
 compileBench (BenPar b1 b2) = do
   barrier <- newEmptyMVar
@@ -229,61 +217,145 @@ compileBench (BenPar b1 b2) = do
   takeMVar barrier
   takeMVar barrier
 
+
+
 {-# NOINLINE timeBench #-}
 timeBench :: Bench -> IO Double
 timeBench b = fst <$> (timeAction $ compileBench b)
 
 instance Arbitrary Bench where
-    arbitrary = sized benchSeq
-        where benchSeq 0 = return test
-              benchSeq n = do
-                switch :: Int <- arbitrary
-                let op = if switch `rem` 2 == 0 then BenSeq else BenPar 
-                op <$> (benchSeq (n-1)) <*> benchSeq (n-1)
-              test = BenAtom (fibM 37)
-    shrink (BenPar a b) = [a,b]
-    shrink (BenSeq a b) = [a,b]
-    shrink a            = []
+    arbitrary = sized benchGen
+    shrink = shrinkBench
 
-{-# NOINLINE timeEstimation #-}
+shrinkBench (BenPar a b) = [a, b] ++ do
+  a' <- shrink a
+  b' <- shrink b
+  return (BenPar a' b')
+shrinkBench (BenSeq a b) =  [a, b] ++ do
+  a' <- shrink a
+  b' <- shrink b
+  return (BenSeq a' b')
+shrinkBench (BenLock1 _ b) = [b]
+shrinkBench (BenLock2 _ b) = [b]
+shrinkBench _a           = []
+
+data BenchSel = BenchSelPar | BenchSelSeq | BenchSelLock1| BenchSelLock2 deriving (Bounded, Enum)
+
+
+benchGen 0 = return BenFib
+benchGen 1 = return BenFib
+benchGen n = do
+  switch :: Int <- arbitrary
+  let op = if switch `rem` 2 == 0 then BenSeq else BenPar 
+      l = (n `div` 2) + n `rem` 2
+      r = (n `div` 2)
+  op <$> benchGen l <*> benchGen r
+
+benchGenPar lk1 lk2 parLimit n = snd <$> benchGenPar' lk1 lk2 parLimit n
+
+benchGenPar' _ _ _ 0 = return (0, BenFib)
+benchGenPar' _ _ _ 1 = return (0, BenFib)
+benchGenPar' lk1Mb lk2Mb parLimit n = do
+  sel <- arbitraryBoundedEnum
+  let lSize = (n `div` 2) + n `rem` 2
+      rSize = (n `div` 2)
+  case sel of
+    BenchSelPar -> 
+        if parLimit == 0
+        then do
+          b <- BenSeq <$> (snd <$> benchGenPar' lk1Mb lk2Mb 0 lSize) 
+                      <*> (snd <$> benchGenPar' lk1Mb lk2Mb 0 rSize)
+          return (0,b)          
+        else do
+          let parLimit' = parLimit - 1
+          (lNumPar, l) <- benchGenPar' lk1Mb lk2Mb parLimit' lSize
+          let parLimit'' = parLimit' - lNumPar
+          (rNumPar, r) <- benchGenPar' lk1Mb lk2Mb parLimit'' rSize
+          return (lNumPar + rNumPar + 1,  BenPar l r)
+    BenchSelSeq -> do
+             (lPar, b1) <- benchGenPar' lk1Mb lk2Mb parLimit lSize
+             (rPar, b2) <- benchGenPar' lk1Mb lk2Mb (parLimit - lPar) lSize
+             return (lPar + rPar, BenSeq b1 b2)
+    BenchSelLock1 -> 
+        case lk1Mb of
+          Just lk1 -> 
+              do
+                (numPar, b) <- benchGenPar' Nothing lk2Mb parLimit (n-1)
+                return (numPar, BenLock1 lk1 b)
+          Nothing -> benchGenPar' lk1Mb lk2Mb parLimit n
+    BenchSelLock2 -> 
+        case lk2Mb of
+          Just lk2 -> 
+              do
+                (numPar, b) <- benchGenPar' lk1Mb Nothing parLimit (n-1)
+                return (numPar, BenLock2 lk2 b)
+          Nothing -> benchGenPar' lk1Mb lk2Mb parLimit n
+
+{- # NOINLINE timeEstimation #-}
 timeEstimation :: Bench -> IO Double
-timeEstimation (BenPar a b)  = max <$> timeBench a <*> timeBench b
-timeEstimation (BenSeq a b)  = (+) <$> timeBench a <*> timeBench b
-timeEstimation b@(BenAtom act) = timeBench b
+timeEstimation (BenPar a b)  = max <$> timeEstimation a <*> timeEstimation b
+timeEstimation (BenSeq a b)  = (+) <$> timeEstimation a <*> timeEstimation b
+timeEstimation (BenLock1 lk1 b) = timeEstimation b
+timeEstimation (BenLock2 lk2 b) = timeEstimation b
+timeEstimation b@BenFib = timeBench b
 \end{code}
 
 Random checking of tests
 \begin{code}
+estimate :: Bool -> Bench -> IO Bool
+estimate verbose b = do
+  estim <- runtimes (timeEstimation b)
+  real  <- runtimes (timeBench b)
+  let res = threshold estim real -- tTest 0.01 estim real
+  when (res || verbose) $ do
+    putStrLn (show (Stats.mean estim, Stats.mean real, estim, real))
+  return res
+          
+    where
+      numRuns :: Int
+      numRuns = 10
+
+      toUnboxed :: UV.Unbox a => V.Vector a -> UV.Vector a
+      toUnboxed = UV.fromList . V.toList
+
+      {--- # NOINLINE runtimes #-}
+      runtimes :: IO Double -> IO (UV.Vector Double)
+      runtimes act = toUnboxed <$> V.tail <$> Traverse.sequenceA (V.replicate (numRuns + 1) act)
+
+threshold :: UV.Vector Double -> UV.Vector Double -> Bool
+threshold a b = 
+    let
+        x1 = filterMean a
+        x2 = filterMean b
+
+        filterMean = Stats.mean . setOp (Set.deleteMin . Set.deleteMax)
+        setOp f = UV.fromList . Set.toList . f . Set.fromList . UV.toList
+    in 
+      abs (max x1 x2 / min x1 x2) > 1.10
+
+numPar (BenPar b1 b2) = 1 + numPar b1 + numPar b2
+numPar (BenSeq b1 b2) = numPar b1 + numPar b2
+numPar _ = 0
+
+-- prop_withoutPar :: Bench -> Property
+prop_withoutPar lk1 lk2 n = forAllShrink (sized (benchGenPar lk1 lk2 n)) shrinkBench prop_estimation
 
 prop_estimation :: Bench -> Property
 prop_estimation = 
     \ b -> monadicIO $ do
-        estim <- average (timeEstimation b)
-        real  <- average (timeBench b)
-        let res = threshold estim real
-        when (not res) $ do
-          run (putStrLn (show (estim,real)))
-          assert res
-          
-    where
-      -- FIXME: this thresholding should probably be replaced with 
-      -- something statistically sound. One candidate would be to use
-      -- the sample std deviation as a bound instead of a constant 10%.
-      threshold a b = abs (b - a)/a < 0.10
-
-      numRuns :: Int
-      numRuns = 20
-                
-      {-# NOINLINE average #-}
-      average act = 
-        do times <- run (sequence $ replicate numRuns act)
-           return (sum times / fromIntegral numRuns)
-                             
+             r <- run $ estimate False b
+             assert (not r)
 
 
-runTests = $quickCheckAll
+-- runTests :: IO Bool
+-- runTests = $quickCheckAll
 
-main = runTests  
+main :: IO ()
+main = do
+  lk1 <- newMVar ()
+  lk2 <- newMVar ()
+  quickCheck (prop_withoutPar (Just lk1) (Just lk2) 5)
+  -- void runTests
   -- do
   --   -- fibM 37
   --   barrier <- newEmptyMVar
