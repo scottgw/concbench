@@ -1,15 +1,14 @@
 .PHONY=all
 
-GHC_OPTS=-rtsopts
+GHC_OPTS=-rtsopts -threaded -O2
 
 all: benchdsl
 
 benchdsl: BenchDSL.lhs
-	ghc -O2 ${GHC_OPTS} -threaded $< -o $@
+	ghc ${GHC_OPTS} $< -o $@
 
 cache: Cache.hs
-	ghc -O2 -threaded $< -o $@
-
+	ghc ${GHC_OPTS} $< -o $@
 
 bench.pdf: bench.tex
 	pdflatex bench.tex
