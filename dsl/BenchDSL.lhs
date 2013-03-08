@@ -10,6 +10,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 import           Control.Applicative
 import           Control.Concurrent
@@ -189,7 +190,7 @@ bench (MkB' mem exec) = do
 timeAction :: IO a -> IO (Double, a)
 timeAction act = do
   t1 <- getCurrentTime
-  r <- act
+  !r <- act
   t2 <- getCurrentTime
   let diff = fromRational $ toRational (t2 `diffUTCTime` t1)
   return (diff, r)
@@ -200,49 +201,96 @@ Simple compositional benchmarks
 
 data Bench where
     BenAtom :: IO () -> Bench
-    BenSeq  :: Bench -> Bench -> Bench
+    BenSeq  :: !Bench -> !Bench -> Bench
+    BenPar  :: !Bench -> !Bench -> Bench
 
 instance Show Bench where
     show (BenAtom f) = "<atom>"
-    show (BenSeq b1 b2) = show b1 ++ "; " ++ show b2
+    show (BenSeq b1 b2) = concat ["(", show b1, ") ; (", show b2,")"]
+    show (BenPar b1 b2) = concat ["(", show b1, ") ||| (", show b2,")"]
 
-fib :: Int -> IO Int
-fib n | n > 1     = (+) <$> fib (n-1) <*> fib (n-2)
-      | otherwise = return 1
+fib :: Int -> Int
+fib n | n > 1     = fib (n-1) + fib (n-2)
+      | otherwise = 1
+                    
+{-# NOINLINE fibM #-}
+fibM n =
+  let !x = fib n
+  in return ()
 
+{-# NOINLINE compileBench #-}
 compileBench :: Bench -> IO ()
-compileBench (BenAtom act)  = act
+compileBench (BenAtom act)  = fibM 37
 compileBench (BenSeq b1 b2) = compileBench b1 >> compileBench b2
+compileBench (BenPar b1 b2) = do
+  barrier <- newEmptyMVar
+  _ <- forkIO (compileBench b1 >> putMVar barrier ())
+  _ <- forkIO (compileBench b2 >> putMVar barrier ())
+  takeMVar barrier
+  takeMVar barrier
 
+{-# NOINLINE timeBench #-}
 timeBench :: Bench -> IO Double
 timeBench b = fst <$> (timeAction $ compileBench b)
 
 instance Arbitrary Bench where
     arbitrary = sized benchSeq
-        where benchSeq 0 = return (BenAtom (void $ fib 20))
-              benchSeq n = BenSeq (BenAtom (void $ fib 20)) <$> (benchSeq (n-1))
+        where benchSeq 0 = return test
+              benchSeq n = do
+                switch :: Int <- arbitrary
+                let op = if switch `rem` 2 == 0 then BenSeq else BenPar 
+                op <$> (benchSeq (n-1)) <*> benchSeq (n-1)
+              test = BenAtom (fibM 37)
+    shrink (BenPar a b) = [a,b]
     shrink (BenSeq a b) = [a,b]
-    shrink a            = [a]
+    shrink a            = []
 
+{-# NOINLINE timeEstimation #-}
 timeEstimation :: Bench -> IO Double
-timeEstimation (BenSeq a b)  = (+) <$> timeEstimation a <*> timeEstimation b
-timeEstimation (BenAtom act) = timeBench (BenAtom act)
+timeEstimation (BenPar a b)  = max <$> timeBench a <*> timeBench b
+timeEstimation (BenSeq a b)  = (+) <$> timeBench a <*> timeBench b
+timeEstimation b@(BenAtom act) = timeBench b
 \end{code}
 
 Random checking of tests
 \begin{code}
 
-
-prop_trivial = 
+prop_estimation :: Bench -> Property
+prop_estimation = 
     \ b -> monadicIO $ do
-        res <- run (threshold <$> timeEstimation b <*> timeBench b)
-        assert res
-    where threshold a b = abs (b - a) < 1
+        estim <- average (timeEstimation b)
+        real  <- average (timeBench b)
+        let res = threshold estim real
+        when (not res) $ do
+          run (putStrLn (show (estim,real)))
+          assert res
+          
+    where
+      -- FIXME: this thresholding should probably be replaced with 
+      -- something statistically sound. One candidate would be to use
+      -- the sample std deviation as a bound instead of a constant 10%.
+      threshold a b = abs (b - a)/a < 0.10
+
+      numRuns :: Int
+      numRuns = 20
+                
+      {-# NOINLINE average #-}
+      average act = 
+        do times <- run (sequence $ replicate numRuns act)
+           return (sum times / fromIntegral numRuns)
+                             
 
 
 runTests = $quickCheckAll
 
-main = runTests
+main = runTests  
+  -- do
+  --   -- fibM 37
+  --   barrier <- newEmptyMVar
+  --   forkIO (fibM 37 >> putMVar barrier ())
+  --   forkIO (fibM 37 >> putMVar barrier ())
+  --   takeMVar barrier
+  --   takeMVar barrier
 -- mutex2 :: B' (MVar ()) ()
 -- mutex2 = MkB' (MkMem (newMVar ())) (MkExec 
 \end{code}

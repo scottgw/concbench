@@ -1,9 +1,11 @@
 .PHONY=all
 
+GHC_OPTS=-rtsopts
+
 all: benchdsl
 
 benchdsl: BenchDSL.lhs
-	ghc -O2 -threaded $< -o $@
+	ghc -O2 ${GHC_OPTS} -threaded $< -o $@
 
 cache: Cache.hs
 	ghc -O2 -threaded $< -o $@
