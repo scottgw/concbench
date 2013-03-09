@@ -1,6 +1,6 @@
 .PHONY=all
 
-GHC_OPTS=-rtsopts -threaded -O2
+GHC_OPTS=-rtsopts -threaded -O2 -Wall
 
 all: benchdsl
 
