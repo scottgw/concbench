@@ -15,13 +15,19 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Monad
 
+import           Criterion
+import           Criterion.Analysis
+import           Criterion.Config
+import           Criterion.Environment
+import           Criterion.Monad
+
 import qualified Data.Traversable as Traverse
-import qualified Data.Set as Set
 import qualified Data.Vector as V
 import qualified Data.Vector.Unboxed as UV
 import qualified Data.Vector.Unboxed.Mutable as UVM
 
 import qualified Statistics.Sample as Stats
+import qualified Statistics.Resampling.Bootstrap as Stats
 
 import           System.Environment()
 import qualified System.Clock as Clock
@@ -81,7 +87,7 @@ unlock  = void . flip putMVar ()
 
 {-# NOINLINE compileBench #-}
 compileBench :: Bench -> IO ()
-compileBench BenFib  = fibM 32
+compileBench BenFib  = fibM 25
 compileBench (BenLock1 l b) = lock l >> compileBench b >> unlock l
 compileBench (BenLock2 l b) = lock l >> compileBench b >> unlock l
 compileBench (BenSeq b1 b2) = compileBench b1 >> compileBench b2
@@ -169,20 +175,33 @@ benchGenPar' lk1Mb lk2Mb parLimit n = do
                 return (p, BenLock2 lk2 b)
           Nothing -> benchGenPar' lk1Mb lk2Mb parLimit n
 
-{- # NOINLINE timeEstimation #-}
-timeEstimation :: Bench -> IO Double
-timeEstimation (BenPar a b)  = max <$> timeEstimation a <*> timeEstimation b
-timeEstimation (BenSeq a b)  = (+) <$> timeEstimation a <*> timeEstimation b
-timeEstimation (BenLock1 _lk1 b) = timeEstimation b
-timeEstimation (BenLock2 _lk2 b) = timeEstimation b
-timeEstimation b@BenFib = timeBench b
+-- {- # NOINLINE timeEstimation #-}
+-- timeEstimation :: Bench -> IO Double
+-- timeEstimation (BenPar a b)  = max <$> timeEstimation a <*> timeEstimation b
+-- timeEstimation (BenSeq a b)  = (+) <$> timeEstimation a <*> timeEstimation b
+-- timeEstimation (BenLock1 _lk1 b) = timeEstimation b
+-- timeEstimation (BenLock2 _lk2 b) = timeEstimation b
+-- timeEstimation b@BenFib = timeBench b
+
+
+directEstimation :: Double -> Bench -> Double
+directEstimation fibEstim ben =
+  case ben of
+    BenFib -> fibEstim
+    BenLock1 _l b -> estim b
+    BenLock2 _l b -> estim b
+    BenSeq b1 b2 -> estim b1 + estim b2
+    BenPar b1 b2 -> estim b1 `max` estim b2
+  where
+    estim = directEstimation fibEstim
+
 \end{code}
 
 Random checking of tests
 \begin{code}
-estimate :: Bool -> Bench -> IO Bool
-estimate verbose b = do
-  estim <- runtimes (timeEstimation b)
+estimate :: Double -> Bool -> Bench -> IO Bool
+estimate fibEstim verbose b = do
+  estim <- runtimes (return $ directEstimation fibEstim b)
   real  <- runtimes (timeBench b)
   let res = threshold estim real -- tTest 0.01 estim real
   when (res && verbose) $ do
@@ -191,7 +210,7 @@ estimate verbose b = do
           
     where
       numRuns :: Int
-      numRuns = 20
+      numRuns = 40
 
       toUnboxed :: UV.Unbox a => V.Vector a -> UV.Vector a
       toUnboxed = UV.fromList . V.toList
@@ -202,9 +221,12 @@ estimate verbose b = do
                      Traverse.sequenceA (V.replicate (numRuns + 1) act)
 
 filterMean :: UV.Vector Double -> Double
-filterMean = Stats.mean . setOp (Set.deleteMin . Set.deleteMax)
+filterMean v = Stats.mean $ dropOutliers v
   where
-    setOp f = UV.fromList . Set.toList . f . Set.fromList . UV.toList
+    dropOutliers = filterIdx maxIdx . filterIdx minIdx
+    maxIdx = UV.maxIndex v
+    minIdx = UV.minIndex v
+    filterIdx i = UV.ifilter (\i' _v -> i /= i')
 
 threshold :: UV.Vector Double -> UV.Vector Double -> Bool
 threshold a b = 
@@ -214,35 +236,51 @@ threshold a b =
     in 
       abs (max x1 x2 / min x1 x2) > 1.10
 
-numPar :: Bench -> Int
-numPar (BenPar b1 b2) = 1 + numPar b1 + numPar b2
-numPar (BenSeq b1 b2) = numPar b1 + numPar b2
-numPar (BenLock1 _lk b) = numPar b
-numPar (BenLock2 _lk b) = numPar b
-numPar _ = 0
+-- numPar :: Bench -> Int
+-- numPar (BenPar b1 b2) = 1 + numPar b1 + numPar b2
+-- numPar (BenSeq b1 b2) = numPar b1 + numPar b2
+-- numPar (BenLock1 _lk b) = numPar b
+-- numPar (BenLock2 _lk b) = numPar b
+-- numPar _ = 0
 
-prop_withoutPar :: Maybe Lock -> Maybe Lock -> Int -> Property
-prop_withoutPar lk1 lk2 n = 
+prop_withoutPar :: Double -> Maybe Lock -> Maybe Lock -> Int -> Property
+prop_withoutPar fibEstim lk1 lk2 n = 
   QuickCheck.forAllShrink 
      (QuickCheck.sized (benchGenPar lk1 lk2 n)) 
      shrinkBench 
-     prop_estimation
+     (prop_estimation fibEstim)
 
-prop_estimation :: Bench -> Property
-prop_estimation = 
+prop_estimation :: Double -> Bench -> Property
+prop_estimation fibEstim = 
     \ b -> QuickCheck.monadicIO $ do
-             r <- QuickCheck.run $ estimate False b
+             r <- QuickCheck.run $ estimate fibEstim True b
              QuickCheck.assert (not r)
 
 
 -- runTests :: IO Bool
 -- runTests = $quickCheckAll
 
+measureFib :: IO Stats.Sample
+measureFib = withConfig defaultConfig $ do
+  env <- measureEnvironment
+  runBenchmark env (compileBench (BenFib))
+
+data BenchParams =
+  BenchParams 
+  { fibParam :: Double
+  , lockParam :: Double
+  , joinParam :: Double
+  }
+
 main :: IO ()
 main = do
+  sample <- measureFib
+  fibEstim <- Stats.estPoint <$> anMean <$> analyseSample 0.95 sample 100
+  print fibEstim
   lk1 <- newMVar ()
   lk2 <- newMVar ()
-  QuickCheck.quickCheck (prop_withoutPar (Just lk1) (Just lk2) 5)
+  
+  QuickCheck.quickCheck (prop_withoutPar fibEstim (Just lk1) (Just lk2) 5)
   -- void runTests
   -- do
   --   -- fibM 37
