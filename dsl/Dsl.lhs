@@ -2,6 +2,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 module Dsl where
 
 import           Control.Applicative
@@ -19,7 +20,6 @@ import qualified Statistics.Resampling.Bootstrap as Stats
 import           System.Environment()
 import qualified System.Clock as Clock
 
-
 import           Test.QuickCheck (Arbitrary, Gen)
 import qualified Test.QuickCheck as QuickCheck
 
@@ -33,6 +33,7 @@ data BenchDsl where
     DslPar   :: !BenchDsl -> !BenchDsl -> BenchDsl
 
 instance Bench BenchDsl where
+    genAtom  = return DslFib
     estimate = estimateDsl
     timeActual = measureDsl
     lock1 = DslLock1
@@ -85,7 +86,7 @@ timeBench b = fst <$> (timeAction $ compileBench b)
 
 
 instance Arbitrary BenchDsl where
-    arbitrary = QuickCheck.sized benchGen
+    arbitrary = QuickCheck.sized dslGen
     shrink = shrinkDsl
 
 shrinkDsl :: BenchDsl -> [BenchDsl]
@@ -101,61 +102,19 @@ shrinkDsl (DslLock1 _ b) = [b]
 shrinkDsl (DslLock2 _ b) = [b]
 shrinkDsl _a           = []
 
-data BenchSel = BenchSelPar | BenchSelSeq | BenchSelLock1| BenchSelLock2 
-              deriving (Bounded, Enum)
 
-
-benchGen :: Int -> Gen BenchDsl
-benchGen 0 = return DslFib
-benchGen 1 = return DslFib
-benchGen n = do
+dslGen :: Int -> Gen BenchDsl
+dslGen 0 = return DslFib
+dslGen 1 = return DslFib
+dslGen n = do
   switch :: Int <- QuickCheck.arbitrary
   let op = if switch `rem` 2 == 0 then DslSeq else DslPar 
       l = (n `div` 2) + n `rem` 2
       r = (n `div` 2)
-  op <$> benchGen l <*> benchGen r
-
-benchGenPar :: Maybe Lock -> Maybe Lock -> Int -> Int -> Gen BenchDsl
-benchGenPar lk1 lk2 parLimit n = snd <$> benchGenPar' lk1 lk2 parLimit n
-
-benchGenPar' :: Maybe Lock -> Maybe Lock -> Int -> Int -> Gen (Int, BenchDsl)
-benchGenPar' _ _ _ 0 = return (0, DslFib)
-benchGenPar' _ _ _ 1 = return (0, DslFib)
-benchGenPar' lk1Mb lk2Mb parLimit n = do
-  sel <- QuickCheck.arbitraryBoundedEnum
-  let lSize = (n `div` 2) + n `rem` 2
-      rSize = (n `div` 2)
-  case sel of
-    BenchSelPar -> 
-        if parLimit == 0
-        then benchGenPar' lk1Mb lk2Mb parLimit n
-        else do
-          let parLimit' = parLimit - 1
-          (lNumPar, l) <- benchGenPar' lk1Mb lk2Mb parLimit' lSize
-          let parLimit'' = parLimit' - lNumPar
-          (rNumPar, r) <- benchGenPar' lk1Mb lk2Mb parLimit'' rSize
-          return (lNumPar + rNumPar + 1,  DslPar l r)
-    BenchSelSeq -> do
-             (lPar, b1) <- benchGenPar' lk1Mb lk2Mb parLimit lSize
-             (rPar, b2) <- benchGenPar' lk1Mb lk2Mb (parLimit - lPar) lSize
-             return (lPar + rPar, DslSeq b1 b2)
-    BenchSelLock1 -> 
-        case lk1Mb of
-          Just lk1 -> 
-              do
-                (p, b) <- benchGenPar' Nothing lk2Mb parLimit (n-1)
-                return (p, DslLock1 lk1 b)
-          Nothing -> benchGenPar' lk1Mb lk2Mb parLimit n
-    BenchSelLock2 -> 
-        case lk2Mb of
-          Just lk2 -> 
-              do
-                (p, b) <- benchGenPar' lk1Mb Nothing parLimit (n-1)
-                return (p, DslLock2 lk2 b)
-          Nothing -> benchGenPar' lk1Mb lk2Mb parLimit n
+  op <$> dslGen l <*> dslGen r
 
 
-estimateDsl :: BenchParams -> BenchDsl -> Stats.Estimate
+estimateDsl :: BenchParams BenchDsl -> BenchDsl -> Stats.Estimate
 estimateDsl param ben =
   case ben of
     DslFib -> fibParam param

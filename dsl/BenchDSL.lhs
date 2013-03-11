@@ -30,7 +30,7 @@ import qualified Test.QuickCheck.Monadic as QuickCheck
 
 import Bench
 import Dsl
-
+import Java
 \end{code}
 
 \begin{code}
@@ -44,7 +44,7 @@ Simple compositional benchmarks
 
 Random checking of tests
 \begin{code}
-decideBench :: Bench a => Environment -> BenchParams -> Bool -> a-> IO Bool
+decideBench :: Bench a => Environment -> BenchParams a -> Bool -> a-> IO Bool
 decideBench env param verbose b = do
   let estim = estimate param b
   real <- timeActual env b
@@ -56,14 +56,23 @@ decideBench env param verbose b = do
       
 threshRatio x1 x2 = abs (max x1 x2 / min x1 x2) > 1.10
 
-prop_withoutPar :: Environment -> BenchParams -> Maybe Lock -> Maybe Lock -> Int -> Property
+prop_withoutPar :: Bench a =>
+                   Environment
+                -> BenchParams a
+                -> Maybe Lock
+                -> Maybe Lock
+                -> Int
+                -> Property
 prop_withoutPar env param lk1 lk2 n = 
   QuickCheck.forAllShrink 
-     (QuickCheck.sized (benchGenPar lk1 lk2 n)) 
-     shrinkDsl
+     (QuickCheck.sized (benchGen lk1 lk2 n)) 
+     QuickCheck.shrink
      (prop_estimation env param)
 
-prop_estimation :: Bench a => Environment -> BenchParams -> a -> Property
+prop_estimation :: Bench a => 
+                   Environment
+                -> BenchParams a
+                -> (a -> Property)
 prop_estimation env param = 
     \ b -> QuickCheck.monadicIO $ do
              r <- QuickCheck.run $ decideBench env param False b
@@ -80,7 +89,8 @@ main = do
   lockEstim <- measureDsl env (DslLock1 lk1 DslFib)
   parEstim <- measureDsl env (DslPar DslFib DslFib)
     
-  let param = BenchParams fibEstim (lockEstim - fibEstim) (parEstim - fibEstim)
+  let param :: BenchParams BenchDsl = 
+               BenchParams fibEstim (lockEstim - fibEstim) (parEstim - fibEstim)
   -- print param
   
   QuickCheck.quickCheck (prop_withoutPar env param (Just lk1) (Just lk2) 5)
