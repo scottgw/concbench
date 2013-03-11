@@ -3,15 +3,15 @@ module Java where
 
 import           Control.Applicative
 
+import           Criterion.Environment
 
 import           Data.Set (Set)
 import qualified Data.Set as Set
 
-import qualified Language.Java.Syntax as Java
-
 import           Test.QuickCheck (Arbitrary)
 import qualified Test.QuickCheck as QuickCheck
 
+import qualified Statistics.Resampling.Bootstrap as Stats
 import           System.Process
 
 import           Bench
@@ -32,6 +32,15 @@ instance Bench Java where
     lock2 lk b = Java (lock2 lk (unJava b))
     b1 |> b2   = Java (unJava b1 |> unJava b2)
     b1 ||| b2  = Java (unJava b1 ||| unJava b2)
+    timeActual = timeActualJava
+    -- estimate :: BenchParams a -> a -> Stats.Estimate
+
+estimateJava :: BenchParams Java -> Java -> 
+
+timeActualJava :: Environment -> Java -> IO Stats.Estimate
+timeActualJava _env java = do
+  time <- timeToRun java
+  return (Stats.Estimate time time time 0.0)
 
 generateByteCode :: Java -> FilePath -> IO ()
 generateByteCode java path = do
@@ -39,7 +48,7 @@ generateByteCode java path = do
       javaPath = path ++ ".java"
   writeFile javaPath str
   procHdl <- runCommand ("javac " ++ javaPath)
-  waitForProcess procHdl
+  _errCode <- waitForProcess procHdl
   return ()
 
 runByteCode :: FilePath -> IO Double
@@ -78,14 +87,14 @@ dslToAST :: BenchDsl -> (Set String, String)
 dslToAST dsl = 
     case dsl of
       DslFib -> (Set.singleton fibDef, "fib(30);")
-      DslLock1 lk b ->
+      DslLock1 _lk b ->
           let (decls, bAst) = dslToAST b
           in (decls, unlines
                        ["synchronized (lk1) {"
                        ,"  " ++ bAst
                        ,"}"
                        ])
-      DslLock2 lk b ->
+      DslLock2 _lk b ->
           let (decls, bAst) = dslToAST b
           in (decls, unlines
                        ["synchronized (lk2) {"

@@ -102,7 +102,6 @@ shrinkDsl (DslLock1 _ b) = [b]
 shrinkDsl (DslLock2 _ b) = [b]
 shrinkDsl _a           = []
 
-
 dslGen :: Int -> Gen BenchDsl
 dslGen 0 = return DslFib
 dslGen 1 = return DslFib
