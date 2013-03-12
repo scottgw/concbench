@@ -20,6 +20,9 @@ import           Criterion.Config
 import           Criterion.Environment
 import           Criterion.Monad
 
+import           Data.Map (Map)
+import qualified Data.Map as Map
+
 import qualified Statistics.Resampling.Bootstrap as Stats
 
 import           System.Environment()
@@ -60,6 +63,14 @@ decideBench env param verbose b = do
   return reject
       
 threshRatio x1 x2 = abs (max x1 x2 / min x1 x2) > 1.10
+
+collectStats :: (RunnableBench a, Bench a lock) => 
+                Environment
+             -> BenchParams a
+             -> Bool
+             -> IO (Map a (Double, Double))
+collectStats env param verbose = do
+  return Map.empty
 
 prop_estimation :: (RunnableBench a, Bench a lock) => 
                    Environment
