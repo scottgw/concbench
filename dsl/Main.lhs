@@ -44,32 +44,24 @@ Simple compositional benchmarks
 
 Random checking of tests
 \begin{code}
-decideBench :: Bench a => Environment -> BenchParams a -> Bool -> a-> IO Bool
+decideBench :: (RunnableBench a, Bench a lock) => 
+               Environment
+            -> BenchParams a
+            -> Bool
+            -> a
+            -> IO Bool
 decideBench env param verbose b = do
   let estim = estimate param b
   real <- timeActual env b
 
   let reject = threshRatio (Stats.estPoint estim) (Stats.estPoint real)
   when (reject && verbose) $ do
-    putStrLn (show (estim, real)) -- , estim, real))
+    putStrLn (show (b, estim, real)) -- , estim, real))
   return reject
       
 threshRatio x1 x2 = abs (max x1 x2 / min x1 x2) > 1.10
 
-prop_withoutPar :: Bench a =>
-                   Environment
-                -> BenchParams a
-                -> Maybe Lock
-                -> Maybe Lock
-                -> Int
-                -> Property
-prop_withoutPar env param lk1 lk2 n = 
-  QuickCheck.forAllShrink 
-     (QuickCheck.sized (benchGen lk1 lk2 n)) 
-     QuickCheck.shrink
-     (prop_estimation env param)
-
-prop_estimation :: Bench a => 
+prop_estimation :: (RunnableBench a, Bench a lock) => 
                    Environment
                 -> BenchParams a
                 -> (a -> Property)
@@ -78,10 +70,23 @@ prop_estimation env param =
              r <- QuickCheck.run $ decideBench env param True b
              QuickCheck.assert (not r)
 
+prop_withoutPar :: (RunnableBench a, Bench a lock) =>
+                   Environment
+                -> BenchParams a
+                -> Maybe lock
+                -> Maybe lock
+                -> Int
+                -> Property
+prop_withoutPar env param lk1 lk2 n = 
+  QuickCheck.forAllShrink 
+     (QuickCheck.sized (benchGen lk1 lk2 n)) 
+     QuickCheck.shrink
+     (prop_estimation env param)
+
 main :: IO ()
 main = do
-  lk1 <- newMVar ()
-  lk2 <- newMVar ()
+  lk1 <- return "Lock1" -- newMVar ()
+  lk2 <- return "Lock2" -- newMVar ()
 
   env <- withConfig defaultConfig measureEnvironment
 
@@ -91,7 +96,10 @@ main = do
     
   let param :: BenchParams Java = 
                BenchParams fibEstim (lockEstim - fibEstim) (parEstim - fibEstim)
-  print param
+  print ( Stats.estPoint (fibParam param)
+        , Stats.estPoint (lockParam param)
+        , Stats.estPoint (joinParam param)
+        )
   
   QuickCheck.quickCheck (prop_withoutPar env param (Just lk1) (Just lk2) 5)
 \end{code}

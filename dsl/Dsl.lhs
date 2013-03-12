@@ -3,6 +3,9 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
+{-# LANGUAGE FlexibleInstances #-}
 module Dsl where
 
 import           Control.Applicative
@@ -25,30 +28,28 @@ import qualified Test.QuickCheck as QuickCheck
 
 import Bench
 
-data BenchDsl where
-    DslFib   :: BenchDsl
-    DslLock1 :: Lock -> !BenchDsl -> BenchDsl
-    DslLock2 :: Lock -> !BenchDsl -> BenchDsl
-    DslSeq   :: !BenchDsl -> !BenchDsl -> BenchDsl
-    DslPar   :: !BenchDsl -> !BenchDsl -> BenchDsl
+data BenchDsl lock where
+    DslFib   :: BenchDsl lock
+    DslLock1 :: lock -> BenchDsl lock -> BenchDsl lock
+    DslLock2 :: lock -> BenchDsl lock -> BenchDsl lock
+    DslSeq   :: BenchDsl lock -> BenchDsl lock -> BenchDsl lock
+    DslPar   :: BenchDsl lock -> BenchDsl lock -> BenchDsl lock
+    deriving (Ord, Eq)
 
-instance Bench BenchDsl where
+instance Bench (BenchDsl lock) lock where
     genAtom  = return DslFib
     estimate = estimateDsl
-    timeActual = measureDsl
     lock1 = DslLock1
     lock2 = DslLock2
     (|>)  = DslSeq
     (|||) = DslPar
 
-instance Show BenchDsl where
+instance Show (BenchDsl lock) where
     show DslFib = "fib"
     show (DslLock1 _l b) = concat ["lock1(", show b, ")"]
     show (DslLock2 _l b) = concat ["lock2(", show b, ")"]
     show (DslSeq b1 b2) = concat ["(", show b1, ") ; (", show b2,")"]
     show (DslPar b1 b2) = concat ["(", show b1, ") ||| (", show b2,")"]
-
-
 
 fib :: Int -> Int
 fib n | n > 1     = fib (n-1) + fib (n-2)
@@ -67,7 +68,7 @@ unlock  :: Lock -> IO ()
 unlock  = void . flip putMVar ()  
 
 {-# NOINLINE compileBench #-}
-compileBench :: BenchDsl -> IO ()
+compileBench :: BenchDsl Lock -> IO ()
 compileBench DslFib  = fibM 32
 compileBench (DslLock1 l b) = lock l >> compileBench b >> unlock l
 compileBench (DslLock2 l b) = lock l >> compileBench b >> unlock l
@@ -80,16 +81,16 @@ compileBench (DslPar b1 b2) = do
   takeMVar barrier
 
 {-# NOINLINE timeBench #-}
-timeBench :: BenchDsl -> IO Double
+timeBench :: BenchDsl Lock -> IO Double
 timeBench b = fst <$> (timeAction $ compileBench b)
 
 
 
-instance Arbitrary BenchDsl where
+instance Arbitrary (BenchDsl lock) where
     arbitrary = QuickCheck.sized dslGen
     shrink = shrinkDsl
 
-shrinkDsl :: BenchDsl -> [BenchDsl]
+shrinkDsl :: BenchDsl lock -> [BenchDsl lock]
 shrinkDsl (DslPar a b) = [a, b] ++ do
   a' <- QuickCheck.shrink a
   b' <- QuickCheck.shrink b
@@ -99,10 +100,10 @@ shrinkDsl (DslSeq a b) =  [a, b] ++ do
   b' <- QuickCheck.shrink b
   return (DslSeq a' b')
 shrinkDsl (DslLock1 lk b) = b : map (DslLock1 lk) (QuickCheck.shrink b)
-shrinkDsl (DslLock2 lk b) = b : map (DslLock1 lk) (QuickCheck.shrink b)
+shrinkDsl (DslLock2 lk b) = b : map (DslLock2 lk) (QuickCheck.shrink b)
 shrinkDsl _a           = []
 
-dslGen :: Int -> Gen BenchDsl
+dslGen :: Int -> Gen (BenchDsl lock)
 dslGen 0 = return DslFib
 dslGen 1 = return DslFib
 dslGen n = do
@@ -113,7 +114,7 @@ dslGen n = do
   op <$> dslGen l <*> dslGen r
 
 
-estimateDsl :: BenchParams BenchDsl -> BenchDsl -> Stats.Estimate
+estimateDsl :: BenchParams (BenchDsl lock) -> BenchDsl lock  -> Stats.Estimate
 estimateDsl param ben =
   case ben of
     DslFib -> fibParam param
@@ -124,7 +125,7 @@ estimateDsl param ben =
   where
     estim = estimateDsl param
 
-measureDsl :: Environment -> BenchDsl -> IO Stats.Estimate
+measureDsl :: Environment -> BenchDsl Lock -> IO Stats.Estimate
 measureDsl env b = do
   sample <- sampleM
   anMean <$> analyseSample 0.95 sample 20

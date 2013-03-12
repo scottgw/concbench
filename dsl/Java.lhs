@@ -1,4 +1,8 @@
 \begin{code}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
 module Java where
 
 import           Control.Applicative
@@ -17,7 +21,7 @@ import           System.Process
 import           Bench
 import           Dsl
 
-newtype Java = Java { unJava :: BenchDsl }
+newtype Java = Java { unJava :: BenchDsl String } deriving (Ord, Eq)
 
 instance Show Java where
     show (Java dsl) = show dsl
@@ -26,14 +30,16 @@ instance Arbitrary Java where
     arbitrary = Java <$> QuickCheck.arbitrary
     shrink (Java dsl) = Java <$> QuickCheck.shrink dsl
 
-instance Bench Java where
+instance Bench Java String where
     genAtom = Java <$> genAtom
     lock1 lk b = Java (lock1 lk (unJava b))
     lock2 lk b = Java (lock2 lk (unJava b))
     b1 |> b2   = Java (unJava b1 |> unJava b2)
     b1 ||| b2  = Java (unJava b1 ||| unJava b2)
-    timeActual = timeActualJava
     estimate   = estimateJava
+
+instance RunnableBench Java where
+    timeActual = timeActualJava
 
 estimateJava :: BenchParams Java -> Java -> Stats.Estimate
 estimateJava (BenchParams f l j) java = 
@@ -73,25 +79,25 @@ wrapJavaBench methods block =
              ["  public static void main (String[] args) {"
              ,"    final Object lk1 = new Object();"
              ,"    final Object lk2 = new Object();"
-             ,"    for (int i = 0; i < 10; i++) {"
+             ,"    for (int i = 0; i < 0; i++) {"
              ,"      " ++ block
              ,"    }"
              ,"    long startTime = System.currentTimeMillis();"
-             ,"    for (int i = 0; i < 500; i++) {"
+             ,"    for (int i = 0; i < 10; i++) {"
              ,"      " ++ block
              ,"    }"
              ,"    long finishTime = System.currentTimeMillis();"
-             ,"    System.out.println(\"\" + (((double)finishTime) - startTime)/1000.0/500);"
+             ,"    System.out.println(\"\" + (((double)finishTime) - startTime)/1000.0/10);"
              ,"  }"
              ,"}"
              ]
             )
             
 
-dslToAST :: BenchDsl -> (Set String, String)
+dslToAST :: BenchDsl String -> (Set String, String)
 dslToAST dsl = 
     case dsl of
-      DslFib -> (Set.singleton fibDef, "fib(30);")
+      DslFib -> (Set.singleton fibDef, "fib(37);")
       DslLock1 _lk b ->
           let (decls, bAst) = dslToAST b
           in (decls, unlines

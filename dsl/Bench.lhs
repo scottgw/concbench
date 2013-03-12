@@ -1,5 +1,7 @@
 \begin{code}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
+{-# LANGUAGE FunctionalDependencies #-}
 module Bench where
 
 import           Control.Applicative
@@ -15,12 +17,14 @@ import qualified Test.QuickCheck as QuickCheck
 import qualified Statistics.Resampling.Bootstrap as Stats
 
 
-class (Show a, Arbitrary a) => Bench a where
-    genAtom  :: Gen a
+class RunnableBench a where
     timeActual :: Environment -> a -> IO Stats.Estimate
+
+class (Show a, Arbitrary a) => Bench a lock | a -> lock where
+    genAtom  :: Gen a
     estimate :: BenchParams a -> a -> Stats.Estimate
-    lock1    :: Lock -> a -> a
-    lock2    :: Lock -> a -> a
+    lock1    :: lock -> a -> a
+    lock2    :: lock -> a -> a
     (|>)     :: a -> a -> a
     (|||)    :: a -> a -> a
 
@@ -44,10 +48,10 @@ type Memory = UVM.IOVector Int
 data BenchSel = BenchSelPar | BenchSelSeq | BenchSelLock1| BenchSelLock2 
               deriving (Bounded, Enum)
 
-benchGen :: Bench a => Maybe Lock -> Maybe Lock -> Int -> Int -> Gen a
+benchGen :: Bench a lock => Maybe lock -> Maybe lock -> Int -> Int -> Gen a
 benchGen lk1 lk2 parLimit n = snd <$> benchGen' lk1 lk2 parLimit n
 
-benchGen' :: Bench a => Maybe Lock -> Maybe Lock -> Int -> Int -> Gen (Int, a)
+benchGen' :: Bench a lock => Maybe lock -> Maybe lock -> Int -> Int -> Gen (Int, a)
 benchGen' _ _ _ 0 = (0,) <$> genAtom
 benchGen' _ _ _ 1 = (0,) <$> genAtom
 benchGen' lk1Mb lk2Mb parLimit n = do
@@ -82,7 +86,5 @@ benchGen' lk1Mb lk2Mb parLimit n = do
                 (p, b) <- benchGen' lk1Mb Nothing parLimit (n-1)
                 return (p, lock2 lk2 b)
           Nothing -> benchGen' lk1Mb lk2Mb parLimit n
-
-
 
 \end{code}
