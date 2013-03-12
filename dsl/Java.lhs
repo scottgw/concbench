@@ -33,9 +33,11 @@ instance Bench Java where
     b1 |> b2   = Java (unJava b1 |> unJava b2)
     b1 ||| b2  = Java (unJava b1 ||| unJava b2)
     timeActual = timeActualJava
-    -- estimate :: BenchParams a -> a -> Stats.Estimate
+    estimate   = estimateJava
 
-estimateJava :: BenchParams Java -> Java -> 
+estimateJava :: BenchParams Java -> Java -> Stats.Estimate
+estimateJava (BenchParams f l j) java = 
+  estimateDsl (BenchParams f l j) (unJava java)
 
 timeActualJava :: Environment -> Java -> IO Stats.Estimate
 timeActualJava _env java = do
@@ -69,14 +71,17 @@ wrapJavaBench methods block =
     unlines (["import java.util.concurrent.*;"
              ,"class Bench {"] ++ Set.toList methods ++ 
              ["  public static void main (String[] args) {"
-             ,"    Object lk1 = new Object();"
-             ,"    Object lk2 = new Object();"
+             ,"    final Object lk1 = new Object();"
+             ,"    final Object lk2 = new Object();"
+             ,"    for (int i = 0; i < 10; i++) {"
+             ,"      " ++ block
+             ,"    }"
              ,"    long startTime = System.currentTimeMillis();"
-             ,"    for (int i = 0; i < 100; i++) {"
+             ,"    for (int i = 0; i < 300; i++) {"
              ,"      " ++ block
              ,"    }"
              ,"    long finishTime = System.currentTimeMillis();"
-             ,"    System.out.println(\"\" + (((double)finishTime) - startTime)/1000.0/100);"
+             ,"    System.out.println(\"\" + (((double)finishTime) - startTime)/1000.0/300);"
              ,"  }"
              ,"}"
              ]

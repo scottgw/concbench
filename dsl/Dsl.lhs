@@ -98,8 +98,8 @@ shrinkDsl (DslSeq a b) =  [a, b] ++ do
   a' <- QuickCheck.shrink a
   b' <- QuickCheck.shrink b
   return (DslSeq a' b')
-shrinkDsl (DslLock1 _ b) = [b]
-shrinkDsl (DslLock2 _ b) = [b]
+shrinkDsl (DslLock1 lk b) = b : map (DslLock1 lk) (QuickCheck.shrink b)
+shrinkDsl (DslLock2 lk b) = b : map (DslLock1 lk) (QuickCheck.shrink b)
 shrinkDsl _a           = []
 
 dslGen :: Int -> Gen BenchDsl

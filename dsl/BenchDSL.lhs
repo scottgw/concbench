@@ -75,7 +75,7 @@ prop_estimation :: Bench a =>
                 -> (a -> Property)
 prop_estimation env param = 
     \ b -> QuickCheck.monadicIO $ do
-             r <- QuickCheck.run $ decideBench env param False b
+             r <- QuickCheck.run $ decideBench env param True b
              QuickCheck.assert (not r)
 
 main :: IO ()
@@ -85,13 +85,13 @@ main = do
 
   env <- withConfig defaultConfig measureEnvironment
 
-  fibEstim <- measureDsl env DslFib
-  lockEstim <- measureDsl env (DslLock1 lk1 DslFib)
-  parEstim <- measureDsl env (DslPar DslFib DslFib)
+  fibEstim <- timeActual env (Java $ DslFib)
+  lockEstim <- timeActual env (Java $ DslLock1 lk1 DslFib)
+  parEstim <- timeActual env (Java $ DslPar DslFib DslFib)
     
-  let param :: BenchParams BenchDsl = 
+  let param :: BenchParams Java = 
                BenchParams fibEstim (lockEstim - fibEstim) (parEstim - fibEstim)
-  -- print param
+  print param
   
   QuickCheck.quickCheck (prop_withoutPar env param (Just lk1) (Just lk2) 5)
 \end{code}
