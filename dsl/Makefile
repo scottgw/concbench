@@ -2,9 +2,9 @@
 
 GHC_OPTS=-rtsopts -threaded -O2 -Wall
 
-all: benchdsl
+all: bench
 
-benchdsl: BenchDSL.lhs Bench.lhs Java.lhs Dsl.lhs
+bench: Main.lhs Bench.lhs Java.lhs Dsl.lhs
 	ghc ${GHC_OPTS} $< -o $@
 
 cache: Cache.hs
@@ -13,5 +13,8 @@ cache: Cache.hs
 bench.pdf: bench.tex
 	pdflatex bench.tex
 
-bench.tex: BenchDSL.lhs
-	lhs2TeX -o bench.tex BenchDSL.lhs
+main.tex: Main.lhs
+	lhs2TeX -o $@ $<
+
+clean:
+	@rm -f *.class *.hi *.o bench main.tex bench.pdf *.java

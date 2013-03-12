@@ -77,11 +77,11 @@ wrapJavaBench methods block =
              ,"      " ++ block
              ,"    }"
              ,"    long startTime = System.currentTimeMillis();"
-             ,"    for (int i = 0; i < 300; i++) {"
+             ,"    for (int i = 0; i < 500; i++) {"
              ,"      " ++ block
              ,"    }"
              ,"    long finishTime = System.currentTimeMillis();"
-             ,"    System.out.println(\"\" + (((double)finishTime) - startTime)/1000.0/300);"
+             ,"    System.out.println(\"\" + (((double)finishTime) - startTime)/1000.0/500);"
              ,"  }"
              ,"}"
              ]
