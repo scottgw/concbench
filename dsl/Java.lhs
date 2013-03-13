@@ -37,6 +37,8 @@ instance Bench Java String where
     b1 |> b2   = Java (unJava b1 |> unJava b2)
     b1 ||| b2  = Java (unJava b1 ||| unJava b2)
     estimate   = estimateJava
+    benchSize  = benchSize . unJava
+    normalize  = Java . normalize . unJava
 
 instance RunnableBench Java where
     timeActual = timeActualJava
@@ -79,15 +81,15 @@ wrapJavaBench methods block =
              ["  public static void main (String[] args) {"
              ,"    final Object lk1 = new Object();"
              ,"    final Object lk2 = new Object();"
-             ,"    for (int i = 0; i < 0; i++) {"
-             ,"      " ++ block
-             ,"    }"
-             ,"    long startTime = System.currentTimeMillis();"
              ,"    for (int i = 0; i < 10; i++) {"
              ,"      " ++ block
              ,"    }"
+             ,"    long startTime = System.currentTimeMillis();"
+             ,"    for (int i = 0; i < 20; i++) {"
+             ,"      " ++ block
+             ,"    }"
              ,"    long finishTime = System.currentTimeMillis();"
-             ,"    System.out.println(\"\" + (((double)finishTime) - startTime)/1000.0/10);"
+             ,"    System.out.println(\"\" + (((double)finishTime) - startTime)/1000.0/20);"
              ,"  }"
              ,"}"
              ]

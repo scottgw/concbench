@@ -39,10 +39,12 @@ data BenchDsl lock where
 instance Bench (BenchDsl lock) lock where
     genAtom  = return DslFib
     estimate = estimateDsl
-    lock1 = DslLock1
-    lock2 = DslLock2
-    (|>)  = DslSeq
-    (|||) = DslPar
+    lock1    = DslLock1
+    lock2    = DslLock2
+    (|>)     = DslSeq
+    (|||)    = DslPar
+    benchSize = dslSize
+    normalize = canonicalDsl
 
 instance Show (BenchDsl lock) where
     show DslFib = "fib"
@@ -50,6 +52,14 @@ instance Show (BenchDsl lock) where
     show (DslLock2 _l b) = concat ["lock2(", show b, ")"]
     show (DslSeq b1 b2) = concat ["(", show b1, ") ; (", show b2,")"]
     show (DslPar b1 b2) = concat ["(", show b1, ") ||| (", show b2,")"]
+
+dslSize dsl =
+    case dsl of
+      DslFib         -> 1
+      DslLock1 _lk b -> 1 + dslSize b
+      DslLock2 _lk b -> 1 + dslSize b
+      DslSeq b1 b2   -> 1 + dslSize b1 + dslSize b2
+      DslPar b1 b2   -> 1 + dslSize b1 + dslSize b2
 
 fib :: Int -> Int
 fib n | n > 1     = fib (n-1) + fib (n-2)
@@ -88,20 +98,48 @@ timeBench b = fst <$> (timeAction $ compileBench b)
 
 instance Arbitrary (BenchDsl lock) where
     arbitrary = QuickCheck.sized dslGen
-    shrink = shrinkDsl
+    shrink = canonicalShrink
+
+canonicalShrink = map canonicalDsl . shrinkDsl . canonicalDsl
 
 shrinkDsl :: BenchDsl lock -> [BenchDsl lock]
-shrinkDsl (DslPar a b) = [a, b] ++ do
-  a' <- QuickCheck.shrink a
-  b' <- QuickCheck.shrink b
-  return (DslPar a' b')
-shrinkDsl (DslSeq a b) =  [a, b] ++ do
-  a' <- QuickCheck.shrink a
-  b' <- QuickCheck.shrink b
-  return (DslSeq a' b')
-shrinkDsl (DslLock1 lk b) = b : map (DslLock1 lk) (QuickCheck.shrink b)
-shrinkDsl (DslLock2 lk b) = b : map (DslLock2 lk) (QuickCheck.shrink b)
+shrinkDsl (DslPar a b) = [a, b] ++ combineShrink DslPar a b
+shrinkDsl (DslSeq a b) =  [a, b] ++ combineShrink DslSeq a b
+shrinkDsl (DslLock1 lk b) = b : QuickCheck.shrink b ++ map (DslLock1 lk) (QuickCheck.shrink b)
+shrinkDsl (DslLock2 lk b) = b : QuickCheck.shrink b ++ map (DslLock2 lk) (QuickCheck.shrink b)
 shrinkDsl _a           = []
+
+combineShrink c a b = 
+    concat [ shrinkWith shrinka shrinkb
+           , shrinkWith (a:shrinka) shrinkb
+           , shrinkWith shrinka (b:shrinkb)
+           , shrinka
+           , shrinkb
+           ]
+    where shrinkWith as bs  = 
+              do a' <- as
+                 b' <- bs
+                 return (c a' b')
+          shrinka = QuickCheck.shrink a
+          shrinkb = QuickCheck.shrink b
+
+canonicalDsl :: BenchDsl lock -> BenchDsl lock
+canonicalDsl dsl =
+    case dsl of
+      DslFib -> DslFib
+      DslLock1 lk1 b -> DslLock1 lk1 (canonicalDsl b)
+      DslLock2 lk2 b -> DslLock2 lk2 (canonicalDsl b)
+      DslSeq b1 b2   -> shiftSeq (DslSeq b1 b2)
+      DslPar b1 b2   -> shiftPar (DslPar b1 b2)
+
+    where
+      shiftSeq (DslSeq (DslSeq b1 b2) b3) = shiftSeq (DslSeq b1 (DslSeq b2 b3))
+      shiftSeq (DslSeq b1 b2)             = DslSeq b1 (shiftSeq b2)
+      shiftSeq b                          = b
+
+      shiftPar (DslPar (DslPar b1 b2) b3) = shiftPar (DslPar b1 (DslPar b2 b3))
+      shiftPar (DslPar b1 b2)             = DslPar b1 (shiftPar b2)
+      shiftPar b                          = b
 
 dslGen :: Int -> Gen (BenchDsl lock)
 dslGen 0 = return DslFib
@@ -114,7 +152,9 @@ dslGen n = do
   op <$> dslGen l <*> dslGen r
 
 
-estimateDsl :: BenchParams (BenchDsl lock) -> BenchDsl lock  -> Stats.Estimate
+estimateDsl :: BenchParams (BenchDsl lock)
+            -> BenchDsl lock
+            -> Stats.Estimate
 estimateDsl param ben =
   case ben of
     DslFib -> fibParam param

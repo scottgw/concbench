@@ -27,6 +27,8 @@ class (Show a, Arbitrary a) => Bench a lock | a -> lock where
     lock2    :: lock -> a -> a
     (|>)     :: a -> a -> a
     (|||)    :: a -> a -> a
+    benchSize :: a -> Int
+    normalize :: a -> a
 
 data BenchParams a =
   BenchParams 
