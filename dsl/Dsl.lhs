@@ -27,18 +27,25 @@ import           Test.QuickCheck (Arbitrary, Gen)
 import qualified Test.QuickCheck as QuickCheck
 
 import Bench
+import Cache
 
-data BenchDsl lock where
-    DslFib   :: BenchDsl lock
-    DslLock1 :: lock -> BenchDsl lock -> BenchDsl lock
-    DslLock2 :: lock -> BenchDsl lock -> BenchDsl lock
-    DslSeq   :: BenchDsl lock -> BenchDsl lock -> BenchDsl lock
-    DslPar   :: BenchDsl lock -> BenchDsl lock -> BenchDsl lock
+
+data BenchDsl lock mem where
+    DslFib   :: BenchDsl lock mem
+    DslCache :: mem  -> BenchDsl lock mem
+    DslLock1 :: lock -> BenchDsl lock mem -> BenchDsl lock mem
+    DslLock2 :: lock -> BenchDsl lock mem -> BenchDsl lock mem
+    DslSeq   :: BenchDsl lock mem -> BenchDsl lock mem -> BenchDsl lock mem
+    DslPar   :: BenchDsl lock mem -> BenchDsl lock mem -> BenchDsl lock mem
     deriving (Ord, Eq)
 
-instance Bench (BenchDsl lock) lock where
+
+type Lock = MVar ()
+
+instance Bench (BenchDsl lock mem) lock mem where
     genAtom  = return DslFib
     estimate = estimateDsl
+    cache    = DslCache
     lock1    = DslLock1
     lock2    = DslLock2
     (|>)     = DslSeq
@@ -46,16 +53,19 @@ instance Bench (BenchDsl lock) lock where
     benchSize = dslSize
     normalize = canonicalDsl
 
-instance Show (BenchDsl lock) where
+instance Show (BenchDsl lock mem) where
     show DslFib = "fib"
+    show (DslCache _) = "cache"
     show (DslLock1 _l b) = concat ["lock1(", show b, ")"]
     show (DslLock2 _l b) = concat ["lock2(", show b, ")"]
     show (DslSeq b1 b2) = concat ["(", show b1, ") ; (", show b2,")"]
     show (DslPar b1 b2) = concat ["(", show b1, ") ||| (", show b2,")"]
 
+dslSize :: BenchDsl lock mem -> Int
 dslSize dsl =
     case dsl of
       DslFib         -> 1
+      DslCache _     -> 1
       DslLock1 _lk b -> 1 + dslSize b
       DslLock2 _lk b -> 1 + dslSize b
       DslSeq b1 b2   -> 1 + dslSize b1 + dslSize b2
@@ -78,8 +88,9 @@ unlock  :: Lock -> IO ()
 unlock  = void . flip putMVar ()  
 
 {-# NOINLINE compileBench #-}
-compileBench :: BenchDsl Lock -> IO ()
+compileBench :: BenchDsl Lock Memory -> IO ()
 compileBench DslFib  = fibM 32
+compileBench (DslCache mem) = memTask mem
 compileBench (DslLock1 l b) = lock l >> compileBench b >> unlock l
 compileBench (DslLock2 l b) = lock l >> compileBench b >> unlock l
 compileBench (DslSeq b1 b2) = compileBench b1 >> compileBench b2
@@ -91,24 +102,26 @@ compileBench (DslPar b1 b2) = do
   takeMVar barrier
 
 {-# NOINLINE timeBench #-}
-timeBench :: BenchDsl Lock -> IO Double
+timeBench :: BenchDsl Lock Memory -> IO Double
 timeBench b = fst <$> (timeAction $ compileBench b)
 
 
 
-instance Arbitrary (BenchDsl lock) where
+instance Arbitrary (BenchDsl lock mem) where
     arbitrary = QuickCheck.sized dslGen
     shrink = canonicalShrink
 
+canonicalShrink :: BenchDsl lock mem -> [BenchDsl lock mem]
 canonicalShrink = map canonicalDsl . shrinkDsl . canonicalDsl
 
-shrinkDsl :: BenchDsl lock -> [BenchDsl lock]
+shrinkDsl :: BenchDsl lock mem -> [BenchDsl lock mem]
 shrinkDsl (DslPar a b) = [a, b] ++ combineShrink DslPar a b
 shrinkDsl (DslSeq a b) =  [a, b] ++ combineShrink DslSeq a b
 shrinkDsl (DslLock1 lk b) = b : QuickCheck.shrink b ++ map (DslLock1 lk) (QuickCheck.shrink b)
 shrinkDsl (DslLock2 lk b) = b : QuickCheck.shrink b ++ map (DslLock2 lk) (QuickCheck.shrink b)
 shrinkDsl _a           = []
 
+combineShrink :: Arbitrary a => (a -> a -> a) -> a -> a -> [a]
 combineShrink c a b = 
     concat [ shrinkWith shrinka shrinkb
            , shrinkWith (a:shrinka) shrinkb
@@ -123,14 +136,14 @@ combineShrink c a b =
           shrinka = QuickCheck.shrink a
           shrinkb = QuickCheck.shrink b
 
-canonicalDsl :: BenchDsl lock -> BenchDsl lock
+canonicalDsl :: BenchDsl lock mem -> BenchDsl lock mem
 canonicalDsl dsl =
     case dsl of
-      DslFib -> DslFib
       DslLock1 lk1 b -> DslLock1 lk1 (canonicalDsl b)
       DslLock2 lk2 b -> DslLock2 lk2 (canonicalDsl b)
       DslSeq b1 b2   -> shiftSeq (DslSeq b1 b2)
       DslPar b1 b2   -> shiftPar (DslPar b1 b2)
+      b              -> b
 
     where
       shiftSeq (DslSeq (DslSeq b1 b2) b3) = shiftSeq (DslSeq b1 (DslSeq b2 b3))
@@ -141,7 +154,7 @@ canonicalDsl dsl =
       shiftPar (DslPar b1 b2)             = DslPar b1 (shiftPar b2)
       shiftPar b                          = b
 
-dslGen :: Int -> Gen (BenchDsl lock)
+dslGen :: Int -> Gen (BenchDsl lock mem)
 dslGen 0 = return DslFib
 dslGen 1 = return DslFib
 dslGen n = do
@@ -151,13 +164,13 @@ dslGen n = do
       r = (n `div` 2)
   op <$> dslGen l <*> dslGen r
 
-
-estimateDsl :: BenchParams (BenchDsl lock)
-            -> BenchDsl lock
+estimateDsl :: BenchParams (BenchDsl lock mem)
+            -> BenchDsl lock mem
             -> Stats.Estimate
 estimateDsl param ben =
   case ben of
     DslFib -> fibParam param
+    DslCache _ -> cacheParam param
     DslLock1 _l b -> estim b + lockParam param
     DslLock2 _l b -> estim b + lockParam param
     DslSeq b1 b2 -> estim b1 + estim b2
@@ -165,7 +178,7 @@ estimateDsl param ben =
   where
     estim = estimateDsl param
 
-measureDsl :: Environment -> BenchDsl Lock -> IO Stats.Estimate
+measureDsl :: Environment -> BenchDsl Lock Memory -> IO Stats.Estimate
 measureDsl env b = do
   sample <- sampleM
   anMean <$> analyseSample 0.95 sample 20
@@ -193,7 +206,12 @@ instance Num Stats.Estimate where
   Stats.Estimate av1 lower1 upper1 _ +
     Stats.Estimate av2 lower2 upper2 confLevel2 =
       Stats.Estimate (av1 + av2) (lower1 + lower2) (upper1 + upper2) confLevel2
-
+  fromInteger i = 
+    Stats.Estimate (fromIntegral i) (fromIntegral i) (fromIntegral i) 0
+  signum = error "Estimate doesn't have 'signum' definition"
+  (*) = error "Estimate doesn't have '*' definition"
+  abs (Stats.Estimate av lower upper conf) = 
+    Stats.Estimate (abs av) (abs lower) (abs upper) conf
 
 instance Ord Stats.Estimate where
   compare e1 e2 = compare (Stats.estPoint e1) (Stats.estPoint e2)

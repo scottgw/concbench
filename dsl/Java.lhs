@@ -21,7 +21,7 @@ import           System.Process
 import           Bench
 import           Dsl
 
-newtype Java = Java { unJava :: BenchDsl String } deriving (Ord, Eq)
+newtype Java = Java { unJava :: BenchDsl String String } deriving (Ord, Eq)
 
 instance Show Java where
     show (Java dsl) = show dsl
@@ -30,8 +30,9 @@ instance Arbitrary Java where
     arbitrary = Java <$> QuickCheck.arbitrary
     shrink (Java dsl) = Java <$> QuickCheck.shrink dsl
 
-instance Bench Java String where
+instance Bench Java String String where
     genAtom = Java <$> genAtom
+    cache mem  = Java (cache mem)
     lock1 lk b = Java (lock1 lk (unJava b))
     lock2 lk b = Java (lock2 lk (unJava b))
     b1 |> b2   = Java (unJava b1 |> unJava b2)
@@ -44,8 +45,8 @@ instance RunnableBench Java where
     timeActual = timeActualJava
 
 estimateJava :: BenchParams Java -> Java -> Stats.Estimate
-estimateJava (BenchParams f l j) java = 
-  estimateDsl (BenchParams f l j) (unJava java)
+estimateJava (BenchParams f c l j) java = 
+  estimateDsl (BenchParams f c l j) (unJava java)
 
 timeActualJava :: Environment -> Java -> IO Stats.Estimate
 timeActualJava _env java = do
@@ -79,8 +80,14 @@ wrapJavaBench methods block =
     unlines (["import java.util.concurrent.*;"
              ,"class Bench {"] ++ Set.toList methods ++ 
              ["  public static void main (String[] args) {"
+             ,"    final int innerSize = 512;"
+             ,"    final int outerSize = 128*innerSize;"
              ,"    final Object lk1 = new Object();"
              ,"    final Object lk2 = new Object();"
+             ,"    final int[][] memArray = new int[outerSize][];"
+             ,"    for (int i = 0; i < outerSize; i++) {"
+             ,"      memArray[i] = new int[innerSize];"
+             ,"    }"
              ,"    for (int i = 0; i < 10; i++) {"
              ,"      " ++ block
              ,"    }"
@@ -96,10 +103,18 @@ wrapJavaBench methods block =
             )
             
 
-dslToAST :: BenchDsl String -> (Set String, String)
+dslToAST :: BenchDsl String String -> (Set String, String)
 dslToAST dsl = 
     case dsl of
       DslFib -> (Set.singleton fibDef, "fib(37);")
+      DslCache _mem -> 
+        let code = unlines [ "for (int cacheI = 0; cacheI < outerSize; cacheI++) {"
+                           , "  for (int cacheJ = 0; cacheJ < innerSize; cacheJ++) {"
+                           , "    memArray[cacheI][cacheJ] = memArray[cacheI][cacheJ] * 2 + 1;"
+                           , "  }"
+                           , "}"
+                           ]
+        in (Set.empty, code)
       DslLock1 _lk b ->
           let (decls, bAst) = dslToAST b
           in (decls, unlines

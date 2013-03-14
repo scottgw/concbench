@@ -1,6 +1,6 @@
 .PHONY=all
 
-GHC_OPTS=-rtsopts -threaded -O2 -Wall
+GHC_OPTS=-rtsopts -threaded -O2 -Wall -fno-warn-orphans
 
 all: bench
 
