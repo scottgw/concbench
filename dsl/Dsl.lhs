@@ -31,6 +31,7 @@ import Cache
 
 
 data BenchDsl lock mem where
+    DslVar   :: BenchDsl lock mem
     DslFib   :: BenchDsl lock mem
     DslCache :: mem  -> BenchDsl lock mem
     DslLock1 :: lock -> BenchDsl lock mem -> BenchDsl lock mem
@@ -38,7 +39,6 @@ data BenchDsl lock mem where
     DslSeq   :: BenchDsl lock mem -> BenchDsl lock mem -> BenchDsl lock mem
     DslPar   :: BenchDsl lock mem -> BenchDsl lock mem -> BenchDsl lock mem
     deriving (Ord, Eq)
-
 
 type Lock = MVar ()
 
@@ -54,6 +54,7 @@ instance Bench (BenchDsl lock mem) lock mem where
     normalize = canonicalDsl
 
 instance Show (BenchDsl lock mem) where
+    show DslVar = "<var>"
     show DslFib = "fib"
     show (DslCache _) = "cache"
     show (DslLock1 _l b) = concat ["lock1(", show b, ")"]
@@ -64,6 +65,7 @@ instance Show (BenchDsl lock mem) where
 dslSize :: BenchDsl lock mem -> Int
 dslSize dsl =
     case dsl of
+      DslVar         -> 1
       DslFib         -> 1
       DslCache _     -> 1
       DslLock1 _lk b -> 1 + dslSize b
@@ -105,8 +107,6 @@ compileBench (DslPar b1 b2) = do
 timeBench :: BenchDsl Lock Memory -> IO Double
 timeBench b = fst <$> (timeAction $ compileBench b)
 
-
-
 instance Arbitrary (BenchDsl lock mem) where
     arbitrary = QuickCheck.sized dslGen
     shrink = canonicalShrink
@@ -116,9 +116,11 @@ canonicalShrink = map canonicalDsl . shrinkDsl . canonicalDsl
 
 shrinkDsl :: BenchDsl lock mem -> [BenchDsl lock mem]
 shrinkDsl (DslPar a b) = [a, b] ++ combineShrink DslPar a b
-shrinkDsl (DslSeq a b) =  [a, b] ++ combineShrink DslSeq a b
-shrinkDsl (DslLock1 lk b) = b : QuickCheck.shrink b ++ map (DslLock1 lk) (QuickCheck.shrink b)
-shrinkDsl (DslLock2 lk b) = b : QuickCheck.shrink b ++ map (DslLock2 lk) (QuickCheck.shrink b)
+shrinkDsl (DslSeq a b) = [a, b] ++ combineShrink DslSeq a b
+shrinkDsl (DslLock1 lk b) = 
+  b : QuickCheck.shrink b ++ map (DslLock1 lk) (QuickCheck.shrink b)
+shrinkDsl (DslLock2 lk b) = 
+  b : QuickCheck.shrink b ++ map (DslLock2 lk) (QuickCheck.shrink b)
 shrinkDsl _a           = []
 
 combineShrink :: Arbitrary a => (a -> a -> a) -> a -> a -> [a]
