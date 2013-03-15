@@ -11,7 +11,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Main (main) where
+module Main where
 
 -- import           Control.Concurrent
 import           Control.Applicative
