@@ -4,15 +4,17 @@
 \begin{document}
 \begin{code}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleContexts #-}
+
 {-# LANGUAGE Rank2Types #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE TupleSections #-}
+
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Main (main) where
 
 -- import           Control.Concurrent
+import           Control.Applicative
 import           Control.Monad
 
 import           Criterion.Config
@@ -74,12 +76,12 @@ collectStats :: forall a lock mem .
                 (Show a, Ord a, RunnableBench a, Bench a lock mem) => 
                 Environment
              -> BenchParams a
-             -> mem
+             -> [a]
              -> Maybe lock
              -> Maybe lock
              -> Int
              -> IO (Map a (Double, Double))
-collectStats env param mem lk1Mb lk2Mb maxSteps = do
+collectStats env param atoms lk1Mb lk2Mb maxSteps = do
   initGen <- newStdGen
   step 0 initGen Map.empty
     where
@@ -123,9 +125,10 @@ collectStats env param mem lk1Mb lk2Mb maxSteps = do
           | i >= maxSteps = return results
           | otherwise     = 
               do let (_val, gen') = next gen
+                     atomsGen = map return atoms
                      testCase = QuickCheck.unGen 
                                   (QuickCheck.sized $ 
-                                             benchGen mem lk1Mb lk2Mb 5)
+                                             benchGenAnd atomsGen lk1Mb lk2Mb 5)
                                   gen
                                   10
                      shrinkSet = Set.fromList (QuickCheck.shrink testCase)
@@ -137,10 +140,51 @@ collectStats env param mem lk1Mb lk2Mb maxSteps = do
                      do putStrLn (concat [ show (i+1) , "/", show maxSteps
                                          , " ", show testCase
                                          ])
+                        
                         resultMb <- decideBenchMb env param testCase
                         results' <- updateWithResultMb results 
                                       testCase resultMb
                         step (i+1) gen' results'
+
+
+genH0Stats :: Environment
+              -> BenchParams Java
+              -> QuickCheck.Gen Java
+              -> Int
+              -> IO (Map Java Double)
+genH0Stats env param bGen maxSteps = do
+  initGen <- newStdGen
+  step 0 initGen Map.empty
+    where
+      step i gen results
+          | i >= maxSteps = return results
+          | otherwise     = 
+              do let (_val, gen') = next gen
+                     testCase = QuickCheck.unGen bGen gen 10
+                     keySet = Set.fromList (Map.keys results)
+
+                 if testCase `Set.member` keySet
+                 then step i gen' results
+                 else
+                     do putStrLn (concat [ show (i+1) , "/", show maxSteps
+                                         , " ", show testCase
+                                         ])
+                        real <- Stats.estPoint <$> timeActual env testCase
+                        step (i+1) gen' (Map.insert testCase real results)
+
+compareStats :: forall a lock mem . 
+                (Show a, Ord a, RunnableBench a, Bench a lock mem) 
+                => Environment
+                -> Map a Double
+                -> IO (Map a (Double, Double))
+compareStats env h0 = foldM step Map.empty (Map.toList h0)
+  where
+      step results (b, h0Time) =
+        do real <- Stats.estPoint <$> timeActual env b
+           if threshRatio h0Time real
+             then return (Map.insert b (h0Time, real) results)
+             else return results
+           
 
 printData :: (Show a, Show b) => Map a b -> String
 printData = 
@@ -157,7 +201,7 @@ main = do
   cacheEstim <- timeActual env (Java $ DslCache mem)
   lockEstim <- timeActual env (Java $ DslLock1 lk1 DslFib)
   parEstim <- timeActual env (Java $ DslPar DslFib DslFib)
-    
+
   let param :: BenchParams Java = 
                BenchParams 
                   fibEstim 
@@ -170,8 +214,16 @@ main = do
         , Stats.estPoint (joinParam param)
         )
   
-  stats <- collectStats env param mem (Just lk1) (Just lk2) 40
-
+  let
+    atomsGen = map return [cache mem, DslFib, DslVar]
+    gen :: QuickCheck.Gen Java
+    gen = QuickCheck.sized 
+          (\sz -> Java <$> benchGenAnd atomsGen (Just lk1) (Just lk2) 5 sz)
+                  
+  -- stats <- collectStats env param [cache mem] (Just lk1) (Just lk2) 40
+  h0 <- genH0Stats env param gen 40
+  stats <- compareStats env h0
+           
   putStrLn (printData stats)
 \end{code}
 
