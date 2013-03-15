@@ -5,7 +5,7 @@
 \begin{code}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE FlexibleContexts #-}
-
+{-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE Rank2Types #-}
 
 {-# LANGUAGE BangPatterns #-}
@@ -147,43 +147,20 @@ collectStats env param atoms lk1Mb lk2Mb maxSteps = do
                         step (i+1) gen' results'
 
 
-genH0Stats :: Environment
-              -> JavaVarRepl
-              -> QuickCheck.Gen Java
-              -> Int
-              -> IO (Map Java Double)
-genH0Stats env repl bGen maxSteps = do
-  initGen <- newStdGen
-  step 0 initGen Map.empty
-    where
-      step i gen results
-          | i >= maxSteps = return results
-          | otherwise     = 
-              do let (_val, gen') = next gen
-                     testCase = QuickCheck.unGen bGen gen 4
-                     keySet = Set.fromList (Map.keys results)
-                 putStrLn (concat [ show (i+1) , "/", show maxSteps
-                                  , " ", show testCase
-                                  ])
-                 real <- Stats.estPoint <$> timeActualJavaWith repl env testCase
-                 step (i+1) gen' (Map.insert testCase real results)
+type BenchMap a = Map a Stats.Estimate
 
-compareStats :: Environment
-             -> JavaVarRepl
-             -> Map Java Double
-             -> IO (Map Java (Either (Double, Double) (Double, Double)))
-compareStats env repl h0 = snd <$> foldM step (0, Map.empty) (Map.toList h0)
-  where
-      step (i, results) (b, h0Time) =
-        do real <- Stats.estPoint <$> timeActualJavaWith repl env b
-           putStrLn (concat [ show (i+1), ":"
-                            , " ", show b
-                            , show real
-                            ])
-           if threshRatio h0Time real
-             then return (i+1, Map.insert b (Right (h0Time, real)) results)
-             else return (i+1, Map.insert b (Left (h0Time, real)) results)
-           
+genStats :: Environment
+              -> JavaVarRepl
+              -> [Java]
+              -> IO (BenchMap Java)
+genStats env repl testCases  = 
+  snd <$> foldM step (0, Map.empty) testCases
+    where
+      step :: (Int, BenchMap Java) -> Java -> IO (Int, BenchMap Java)
+      step (i, results) testCase = 
+        do putStrLn (concat [ show (i+1) , " ", show testCase])
+           real <- timeActualJavaWith repl env testCase
+           return (i+1, Map.insert testCase real results)
 
 printData :: (Show a, Show b) => Map a b -> String
 printData = 
@@ -223,28 +200,62 @@ main = do
 
 --    x :: Gen (BenchDsl String String
     x = DslVar
-    standardTests = 
-        Java <$> QuickCheck.oneof 
-                 (map return 
-                          [ x
-                          , cache mem
-                          , x ||| x
-                          , x |> x
-                          , x ||| cache mem
-                          , x ||| x ||| cache mem
-                          , x |> cache mem
-                          ])
     
-    replXH0 DslVar = Just (Set.empty, h0Remove)
-    replXH0 _      = Nothing
-    replXH1 DslVar = Just (Set.empty, h1Remove)
-    replXH1 _      = Nothing
+    genList 0 _  _    _   = []
+    genList n sz rand gen =
+      let (_val, rand') = next rand
+          x = QuickCheck.unGen gen rand sz
+      in x : genList (n-1) sz rand' gen
+    
+    standardTests = 
+      Java <$> [ x
+               , cache mem
+               , x ||| x
+               , x |> x
+               , x |> cache mem
+               , x ||| cache mem
+               , x ||| x ||| cache mem
+               , x ||| x ||| x
+               , x ||| x ||| x ||| x
+               ]
+    
+  
+    removeChiz0 = 
+      Chiz
+      { charName = "concurrent-linked-queue-remove.chiz"
+      , charRepl = h0Remove
+      , charResults = Nothing 
+      }
+      
+    removeChiz1 = 
+      Chiz
+      { charName = "arrayed-blocking-queue-remove.chiz"
+      , charRepl = h1Remove
+      , charResults = Nothing 
+      }
+  
+    replX str DslVar = Just (Set.empty, str)
+    replX _   _      = Nothing
 
+    runChiz chiz = 
+      do res <- genStats env (replX $ charRepl chiz) standardTests
+         let chiz' = chiz {charResults = Just res}
+         writeFile (charName chiz') (show chiz')
+
+  
+  runChiz removeChiz0
+  runChiz removeChiz1
   -- stats <- collectStats env param [cache mem] (Just lk1) (Just lk2) 40
-  h0 <- genH0Stats env replXH0 standardTests 20
-  stats <- compareStats env replXH1 h0
 
-  putStrLn (printData stats)
+deriving instance Read Stats.Estimate
+
+-- | The characterization description and results.
+data Chiz = 
+  Chiz 
+  { charName :: String
+  , charRepl :: String
+  , charResults :: Maybe (BenchMap Java)
+  } deriving (Read, Show)
 
 h0Remove = qOp " q1.poll();"
 h1Remove = qOp " q2.poll();"

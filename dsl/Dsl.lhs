@@ -37,7 +37,7 @@ data BenchDsl lock mem where
     DslLock2 :: lock -> BenchDsl lock mem -> BenchDsl lock mem
     DslSeq   :: BenchDsl lock mem -> BenchDsl lock mem -> BenchDsl lock mem
     DslPar   :: BenchDsl lock mem -> BenchDsl lock mem -> BenchDsl lock mem
-    deriving (Ord, Eq)
+    deriving (Ord, Eq, Read, Show)
 
 instance Bench (BenchDsl lock mem) lock mem where
     genAtom  = return DslFib
@@ -50,14 +50,15 @@ instance Bench (BenchDsl lock mem) lock mem where
     benchSize = dslSize
     normalize = canonicalDsl
 
-instance Show (BenchDsl lock mem) where
-    show DslVar = "<var>"
-    show DslFib = "fib"
-    show (DslCache _) = "cache"
-    show (DslLock1 _l b) = concat ["lock1(", show b, ")"]
-    show (DslLock2 _l b) = concat ["lock2(", show b, ")"]
-    show (DslSeq b1 b2) = concat ["(", show b1, ") ; (", show b2,")"]
-    show (DslPar b1 b2) = concat ["(", show b1, ") ||| (", show b2,")"]
+
+pretty :: BenchDsl lock mem -> String
+pretty DslVar = "<var>"
+pretty DslFib = "fib"
+pretty (DslCache _) = "cache"
+pretty (DslLock1 _l b) = concat ["lock1(", pretty b, ")"]
+pretty (DslLock2 _l b) = concat ["lock2(", pretty b, ")"]
+pretty (DslSeq b1 b2) = concat ["(", pretty b1, ") ; (", pretty b2,")"]
+pretty (DslPar b1 b2) = concat ["(", pretty b1, ") ||| (", pretty b2 ,")"]
 
 dslSize :: BenchDsl lock mem -> Int
 dslSize dsl =

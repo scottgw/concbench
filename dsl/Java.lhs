@@ -8,9 +8,12 @@ module Java where
 import           Control.Applicative
 
 import           Criterion.Environment
+import           Criterion.Analysis
 
 import           Data.Set (Set)
 import qualified Data.Set as Set
+import qualified Data.Vector.Unboxed as UV
+
 
 import           Test.QuickCheck (Arbitrary)
 import qualified Test.QuickCheck as QuickCheck
@@ -21,10 +24,14 @@ import           System.Process
 import           Bench
 import           Dsl
 
-newtype Java = Java { unJava :: BenchDsl String String } deriving (Ord, Eq)
+newtype Java = Java { unJava :: BenchDsl String String } 
+             deriving (Ord, Eq)
 
 instance Show Java where
     show (Java dsl) = show dsl
+
+instance Read Java where
+  readsPrec p = map (\ (dsl, rest) -> (Java dsl, rest)) . readsPrec p
 
 instance Arbitrary Java where
     arbitrary = Java <$> QuickCheck.arbitrary
@@ -49,15 +56,13 @@ estimateJava (BenchParams f c l j) java =
   estimateDsl (BenchParams f c l j) (unJava java)
 
 timeActualJava :: Environment -> Java -> IO Stats.Estimate
-timeActualJava _env java = do
-  (time, stddev) <- timeToRun java
-  return (Stats.Estimate time (time - stddev) (stddev + time) 0.0)
-
+timeActualJava = timeActualJavaWith (const Nothing)
 
 timeActualJavaWith :: JavaVarRepl -> Environment -> Java -> IO Stats.Estimate
 timeActualJavaWith this _env java = do
-  (time, stddev) <- timeToRunWith this java
-  return (Stats.Estimate time (time - stddev) (stddev + time) 0.0)
+  timeVector <- UV.fromList <$> timeToRunWith this java
+  analysis <- analyseSample 0.95 timeVector 100
+  return (anMean analysis)
 
 
 type JavaSrcPart = (Set String, String)
@@ -76,20 +81,23 @@ generateByteCodeWith this java path = do
 generateByteCode :: Java -> FilePath -> IO ()
 generateByteCode  = generateByteCodeWith (const Nothing)
 
-runByteCode :: FilePath -> IO (Double, Double)
-runByteCode path = 
-    read <$> readProcess "java" ["-cp",cpOpt, path] ""
+runByteCode :: FilePath -> IO [Double]
+runByteCode path = do
+    output <- readProcess "java" ["-cp",cpOpt, path] ""
+    case reads output of
+      [] -> error output
+      (x,_):_ -> return x
     where
       cpOpt = ".:commons-math-2.2.jar"
 
 
-timeToRunWith :: JavaVarRepl -> Java -> IO (Double, Double)
+timeToRunWith :: JavaVarRepl -> Java -> IO [Double]
 timeToRunWith this java = do
   let path = "Bench"
   generateByteCodeWith this java path
   runByteCode path
 
-timeToRun :: Java -> IO (Double, Double)
+timeToRun :: Java -> IO [Double]
 timeToRun = timeToRunWith (const Nothing)
 
 javaToASTWith :: JavaVarRepl -> Java -> String
@@ -98,30 +106,32 @@ javaToASTWith this = uncurry wrapJavaBench . dslToASTWith this . unJava
 wrapJavaBench :: Set String -> String -> String
 wrapJavaBench methods block = 
     unlines (["import java.util.concurrent.*;"
+             ,"import java.util.*;"
              ,"import org.apache.commons.math.stat.descriptive.*;"
              ,"class Bench {"
              ] ++ Set.toList methods ++ 
              ["  public static void main (String[] args) {"
-             ,"    DescriptiveStatistics stats = new DescriptiveStatistics();"
+             -- ,"    DescriptiveStatistics stats = new DescriptiveStatistics();"
+             ,"    Vector<Double> stats = new Vector<Double>();"
              ,"    final int innerSize = 512;"
              ,"    final int outerSize = 128*innerSize;"
+             ,"    final int qN = 100000;"
              ,"    final Object dummy = new Object();"
              ,"    final ConcurrentLinkedQueue<Object> q1 = new ConcurrentLinkedQueue<Object>();"
-             ,"    final LinkedBlockingQueue<Object> q2 = new LinkedBlockingQueue<Object>();"
+             ,"    final ArrayBlockingQueue<Object> q2 = new ArrayBlockingQueue<Object>(qN*11);"
              ,"    final Object lk1 = new Object();"
              ,"    final Object lk2 = new Object();"
              ,"    final int[][] memArray = new int[outerSize][];"
              ,"    for (int i = 0; i < outerSize; i++) {"
              ,"      memArray[i] = new int[innerSize];"
              ,"    }"
-             ,"    final int qN = 100000;"
              ,"    for (int i = 0; i < qN*10; i++) { q1.offer (dummy); }"
              ,"    for (int i = 0; i < qN*10; i++) { q2.offer (dummy); }"
              ,"    for (int i = 0; i < 20; i++) {"
              ,"       long startTime = System.nanoTime();"
              ,"      " ++ block
              ,"    }"
-             ,"    for (int i = 0; i < 50; i++) {"
+             ,"    for (int i = 0; i < 100; i++) {"
              ,"      q1.clear();"
              ,"      q2.clear();"
              ,"      for (int j = 0; j < outerSize; j++) {"
@@ -134,10 +144,15 @@ wrapJavaBench methods block =
              ,"      " ++ block
              ,"      long finishTime = System.nanoTime();"
              ,"      double duration = ((double)finishTime - (double)startTime)/1000000000.0;"
---             ,"      System.out.println (\"\" + duration);"
-             ,"      stats.addValue (duration);"
+             ,"      stats.add (duration);"
              ,"    }"
-             ,"    System.out.println(\"(\" + stats.getMean() + \",\" + stats.getStandardDeviation() + \")\");"
+             ,"    System.out.print('[');"
+             ,"    for(int i = 0; i < stats.size() - 1; i++){"
+             ,"      System.out.print (stats.get(i).toString());"
+             ,"      System.out.print (',');"
+             ,"    }"
+             ,"    System.out.print(stats.get(stats.size()-1));"
+             ,"    System.out.print(']');"
              ,"  }"
              ,"}"
              ]

@@ -18,7 +18,7 @@ class RunnableBench a where
     timeActual :: Environment -> a -> IO Stats.Estimate
 --    timeWithHold :: 
 
-class (Show a, Arbitrary a) => Bench a lock mem | a -> lock, a -> mem where
+class Arbitrary a => Bench a lock mem | a -> lock, a -> mem where
     genAtom  :: Gen a
     estimate :: BenchParams a -> a -> Stats.Estimate
     cache    :: mem -> a
