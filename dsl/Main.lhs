@@ -148,11 +148,11 @@ collectStats env param atoms lk1Mb lk2Mb maxSteps = do
 
 
 genH0Stats :: Environment
-              -> BenchParams Java
+              -> JavaVarRepl
               -> QuickCheck.Gen Java
               -> Int
               -> IO (Map Java Double)
-genH0Stats env param bGen maxSteps = do
+genH0Stats env repl bGen maxSteps = do
   initGen <- newStdGen
   step 0 initGen Map.empty
     where
@@ -160,30 +160,29 @@ genH0Stats env param bGen maxSteps = do
           | i >= maxSteps = return results
           | otherwise     = 
               do let (_val, gen') = next gen
-                     testCase = QuickCheck.unGen bGen gen 10
+                     testCase = QuickCheck.unGen bGen gen 4
                      keySet = Set.fromList (Map.keys results)
+                 putStrLn (concat [ show (i+1) , "/", show maxSteps
+                                  , " ", show testCase
+                                  ])
+                 real <- Stats.estPoint <$> timeActualJavaWith repl env testCase
+                 step (i+1) gen' (Map.insert testCase real results)
 
-                 if testCase `Set.member` keySet
-                 then step i gen' results
-                 else
-                     do putStrLn (concat [ show (i+1) , "/", show maxSteps
-                                         , " ", show testCase
-                                         ])
-                        real <- Stats.estPoint <$> timeActual env testCase
-                        step (i+1) gen' (Map.insert testCase real results)
-
-compareStats :: forall a lock mem . 
-                (Show a, Ord a, RunnableBench a, Bench a lock mem) 
-                => Environment
-                -> Map a Double
-                -> IO (Map a (Double, Double))
-compareStats env h0 = foldM step Map.empty (Map.toList h0)
+compareStats :: Environment
+             -> JavaVarRepl
+             -> Map Java Double
+             -> IO (Map Java (Either (Double, Double) (Double, Double)))
+compareStats env repl h0 = snd <$> foldM step (0, Map.empty) (Map.toList h0)
   where
-      step results (b, h0Time) =
-        do real <- Stats.estPoint <$> timeActual env b
+      step (i, results) (b, h0Time) =
+        do real <- Stats.estPoint <$> timeActualJavaWith repl env b
+           putStrLn (concat [ show (i+1), ":"
+                            , " ", show b
+                            , show real
+                            ])
            if threshRatio h0Time real
-             then return (Map.insert b (h0Time, real) results)
-             else return results
+             then return (i+1, Map.insert b (Right (h0Time, real)) results)
+             else return (i+1, Map.insert b (Left (h0Time, real)) results)
            
 
 printData :: (Show a, Show b) => Map a b -> String
@@ -197,34 +196,63 @@ main = do
   mem <- return "MemArray"
   env <- withConfig defaultConfig measureEnvironment
 
-  fibEstim <- timeActual env (Java $ DslFib)
-  cacheEstim <- timeActual env (Java $ DslCache mem)
-  lockEstim <- timeActual env (Java $ DslLock1 lk1 DslFib)
-  parEstim <- timeActual env (Java $ DslPar DslFib DslFib)
+  -- fibEstim <- timeActual env (Java $ DslFib)
+  -- cacheEstim <- timeActual env (Java $ DslCache mem)
+  -- lockEstim <- timeActual env (Java $ DslLock1 lk1 DslFib)
+  -- parEstim <- timeActual env (Java $ DslPar DslFib DslFib)
 
-  let param :: BenchParams Java = 
-               BenchParams 
-                  fibEstim 
-                  cacheEstim 
-                  (lockEstim - fibEstim) 
-                  (parEstim - fibEstim)
-  print ( Stats.estPoint (fibParam param)
-        , Stats.estPoint (cacheParam param)
-        , Stats.estPoint (lockParam param)
-        , Stats.estPoint (joinParam param)
-        )
-  
+  -- let param :: BenchParams Java = 
+  --              BenchParams 
+  --                 fibEstim 
+  --                 cacheEstim 
+  --                 (lockEstim - fibEstim) 
+  --                 (parEstim - fibEstim)
+  -- print ( Stats.estPoint (fibParam param)
+  --       , Stats.estPoint (cacheParam param)
+  --       , Stats.estPoint (lockParam param)
+  --       , Stats.estPoint (joinParam param)
+  --       )
+
   let
     atomsGen = map return [cache mem, DslFib, DslVar]
-    gen :: QuickCheck.Gen Java
-    gen = QuickCheck.sized 
-          (\sz -> Java <$> benchGenAnd atomsGen (Just lk1) (Just lk2) 5 sz)
-                  
+    genX :: QuickCheck.Gen Java
+    genX = Java <$> QuickCheck.sized 
+           (\sz -> 
+                let g = benchGenAnd atomsGen (Just lk1) (Just lk2) 5 sz
+                in QuickCheck.suchThat g hasVar)
+
+--    x :: Gen (BenchDsl String String
+    x = DslVar
+    standardTests = 
+        Java <$> QuickCheck.oneof 
+                 (map return 
+                          [ x
+                          , cache mem
+                          , x ||| x
+                          , x |> x
+                          , x ||| cache mem
+                          , x ||| x ||| cache mem
+                          , x |> cache mem
+                          ])
+    
+    replXH0 DslVar = Just (Set.empty, h0Remove)
+    replXH0 _      = Nothing
+    replXH1 DslVar = Just (Set.empty, h1Remove)
+    replXH1 _      = Nothing
+
   -- stats <- collectStats env param [cache mem] (Just lk1) (Just lk2) 40
-  h0 <- genH0Stats env param gen 40
-  stats <- compareStats env h0
-           
+  h0 <- genH0Stats env replXH0 standardTests 20
+  stats <- compareStats env replXH1 h0
+
   putStrLn (printData stats)
+
+h0Remove = qOp " q1.poll();"
+h1Remove = qOp " q2.poll();"
+
+h0Offer = qOp " q1.offer(dummy);"
+h1Offer = qOp " q2.offer(dummy);"
+
+qOp o = unlines ["for (int qi = 0; qi < qN; qi++){", o, "}"]
 \end{code}
 
 \end{document}

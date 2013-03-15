@@ -29,7 +29,6 @@ import qualified Test.QuickCheck as QuickCheck
 import Bench
 import Cache
 
-
 data BenchDsl lock mem where
     DslVar   :: BenchDsl lock mem
     DslFib   :: BenchDsl lock mem
@@ -39,8 +38,6 @@ data BenchDsl lock mem where
     DslSeq   :: BenchDsl lock mem -> BenchDsl lock mem -> BenchDsl lock mem
     DslPar   :: BenchDsl lock mem -> BenchDsl lock mem -> BenchDsl lock mem
     deriving (Ord, Eq)
-
-type Lock = MVar ()
 
 instance Bench (BenchDsl lock mem) lock mem where
     genAtom  = return DslFib
@@ -73,6 +70,16 @@ dslSize dsl =
       DslSeq b1 b2   -> 1 + dslSize b1 + dslSize b2
       DslPar b1 b2   -> 1 + dslSize b1 + dslSize b2
 
+hasVar :: BenchDsl lock mem -> Bool
+hasVar dsl = 
+    case dsl of
+      DslVar       -> True
+      DslLock1 _ b -> hasVar b
+      DslLock2 _ b -> hasVar b
+      DslSeq b1 b2 -> hasVar b1 || hasVar b2
+      DslPar b1 b2 -> hasVar b1 || hasVar b2
+      _            -> False
+
 fib :: Int -> Int
 fib n | n > 1     = fib (n-1) + fib (n-2)
       | otherwise = 1
@@ -89,6 +96,8 @@ lock    = void . takeMVar
 unlock  :: Lock -> IO ()
 unlock  = void . flip putMVar ()  
 
+type Lock = MVar ()
+
 {-# NOINLINE compileBench #-}
 compileBench :: BenchDsl Lock Memory -> IO ()
 compileBench DslFib  = fibM 32
@@ -102,6 +111,7 @@ compileBench (DslPar b1 b2) = do
   _ <- forkIO (compileBench b2 >> putMVar barrier ())
   takeMVar barrier
   takeMVar barrier
+
 
 {-# NOINLINE timeBench #-}
 timeBench :: BenchDsl Lock Memory -> IO Double
