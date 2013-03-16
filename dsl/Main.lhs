@@ -3,13 +3,7 @@
 
 \begin{document}
 \begin{code}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE StandaloneDeriving #-}
-{-# LANGUAGE Rank2Types #-}
-
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
@@ -36,6 +30,7 @@ import qualified Test.QuickCheck as QuickCheck
 import qualified Test.QuickCheck.Gen as QuickCheck
 
 import Bench
+import Chiz
 import Dsl
 import Java
 \end{code}
@@ -146,9 +141,6 @@ collectStats env param atoms lk1Mb lk2Mb maxSteps = do
                                       testCase resultMb
                         step (i+1) gen' results'
 
-
-type BenchMap a = Map a Stats.Estimate
-
 genStats :: Environment
               -> JavaVarRepl
               -> [Java]
@@ -200,13 +192,13 @@ main = do
 
 --    x :: Gen (BenchDsl String String
     x = DslVar
-    
+
     genList 0 _  _    _   = []
     genList n sz rand gen =
       let (_val, rand') = next rand
           x = QuickCheck.unGen gen rand sz
       in x : genList (n-1) sz rand' gen
-    
+
     standardTests = 
       Java <$> [ x
                , cache mem
@@ -218,22 +210,21 @@ main = do
                , x ||| x ||| x
                , x ||| x ||| x ||| x
                ]
-    
-  
-    removeChiz0 = 
+
+    concLinkQueueRemoveChiz =
       Chiz
       { charName = "concurrent-linked-queue-remove.chiz"
       , charRepl = h0Remove
       , charResults = Nothing 
       }
-      
-    removeChiz1 = 
+
+    arrayBlockQueueRemoveChiz =
       Chiz
       { charName = "arrayed-blocking-queue-remove.chiz"
       , charRepl = h1Remove
       , charResults = Nothing 
       }
-  
+
     replX str DslVar = Just (Set.empty, str)
     replX _   _      = Nothing
 
@@ -242,20 +233,10 @@ main = do
          let chiz' = chiz {charResults = Just res}
          writeFile (charName chiz') (show chiz')
 
+    chizes = [concLinkQueueRemoveChiz, arrayBlockQueueRemoveChiz]
   
-  runChiz removeChiz0
-  runChiz removeChiz1
+  mapM_ runChiz chizes
   -- stats <- collectStats env param [cache mem] (Just lk1) (Just lk2) 40
-
-deriving instance Read Stats.Estimate
-
--- | The characterization description and results.
-data Chiz = 
-  Chiz 
-  { charName :: String
-  , charRepl :: String
-  , charResults :: Maybe (BenchMap Java)
-  } deriving (Read, Show)
 
 h0Remove = qOp " q1.poll();"
 h1Remove = qOp " q2.poll();"
