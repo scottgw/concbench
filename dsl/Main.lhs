@@ -7,14 +7,16 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
--- import           Control.Concurrent
 import           Control.Applicative
+import           Control.Lens
 import           Control.Monad
 
 import           Criterion.Config
 import           Criterion.Environment
 import           Criterion.Monad
 
+import           Data.Aeson
+import qualified Data.ByteString.Lazy as BS
 import           Data.List
 import           Data.Map (Map)
 import qualified Data.Map as Map
@@ -23,7 +25,7 @@ import qualified Data.Set as Set
 
 import qualified Statistics.Resampling.Bootstrap as Stats
 
-import           System.Environment()
+import           System.Environment
 import           System.Random
 
 import qualified Test.QuickCheck as QuickCheck
@@ -46,7 +48,7 @@ Simple compositional benchmarks
 
 Random checking of tests
 \begin{code}
-decideBenchMb :: (RunnableBench a, Bench a lock mem) => 
+decideBenchMb :: (RunnableBench a, Bench a) => 
                  Environment
               -> BenchParams a
               -> a
@@ -67,16 +69,14 @@ decideBenchMb env param b = do
 threshRatio :: Double -> Double -> Bool
 threshRatio x1 x2 = abs (max x1 x2 / min x1 x2) > 1.10
 
-collectStats :: forall a lock mem . 
-                (Show a, Ord a, RunnableBench a, Bench a lock mem) => 
+collectStats :: forall a . 
+                (Show a, Ord a, RunnableBench a, Bench a) => 
                 Environment
              -> BenchParams a
              -> [a]
-             -> Maybe lock
-             -> Maybe lock
              -> Int
              -> IO (Map a (Double, Double))
-collectStats env param atoms lk1Mb lk2Mb maxSteps = do
+collectStats env param atoms maxSteps = do
   initGen <- newStdGen
   step 0 initGen Map.empty
     where
@@ -123,7 +123,7 @@ collectStats env param atoms lk1Mb lk2Mb maxSteps = do
                      atomsGen = map return atoms
                      testCase = QuickCheck.unGen 
                                   (QuickCheck.sized $ 
-                                             benchGenAnd atomsGen lk1Mb lk2Mb 5)
+                                             benchGenAnd atomsGen 5)
                                   gen
                                   10
                      shrinkSet = Set.fromList (QuickCheck.shrink testCase)
@@ -143,54 +143,63 @@ collectStats env param atoms lk1Mb lk2Mb maxSteps = do
 
 genStats :: Environment
               -> JavaVarRepl
-              -> [Java]
-              -> IO (BenchMap Java)
+              -> [BenchDsl]
+              -> IO BenchMap
 genStats env repl testCases  = 
   snd <$> foldM step (0, Map.empty) testCases
     where
-      step :: (Int, BenchMap Java) -> Java -> IO (Int, BenchMap Java)
+      step :: (Int, BenchMap) -> BenchDsl -> IO (Int, BenchMap)
       step (i, results) testCase = 
-        do putStrLn (concat [ show (i+1) , " ", show testCase])
-           real <- timeActualJavaWith repl env testCase
+        do putStrLn (concat [ show (i+1) , " ", pretty testCase])
+           real <- timeActualJavaWith repl env (Java testCase)
            return (i+1, Map.insert testCase real results)
 
 printData :: (Show a, Show b) => Map a b -> String
 printData = 
     unlines . map (\(a,b) -> concat [show a, " => ", show b]) . Map.toList
 
+runChizInput :: Environment -> ChizInput -> IO ChizInput
+runChizInput env chizIn =
+  do putStrLn $ "Running: " ++ view chizTestName chizIn
+     chizIn' <- mapMOf chizTestElements (mapM runChizElem) chizIn
+     return chizIn'
+  where
+    testCases = view chizTestCases chizIn
+
+    replX elem op DslVar = Just part
+      where
+        part = JavaSrcPart Set.empty
+                           (view elementDecls elem)
+                           (Set.singleton $ view elementReset elem)
+                           (view opCode op)
+    replX _ _   _     = Nothing
+    
+    runChizElem :: Element -> IO Element
+    runChizElem elmnt = mapMOf elementOperations (mapM (runChizOp elmnt)) elmnt
+
+    runChizOp :: Element -> Operation -> IO Operation
+    runChizOp elem op =
+      do res <- genStats env (replX elem op) testCases
+         let op' = set opResults (Just res) op
+         return op'
+
 main :: IO ()
 main = do
-  lk1 <- return "Lock1" -- newMVar ()
-  lk2 <- return "Lock2" -- newMVar ()
-  mem <- return "MemArray"
+  fileName:_ <- getArgs
   env <- withConfig defaultConfig measureEnvironment
 
-  -- fibEstim <- timeActual env (Java $ DslFib)
-  -- cacheEstim <- timeActual env (Java $ DslCache mem)
-  -- lockEstim <- timeActual env (Java $ DslLock1 lk1 DslFib)
-  -- parEstim <- timeActual env (Java $ DslPar DslFib DslFib)
-
-  -- let param :: BenchParams Java = 
-  --              BenchParams 
-  --                 fibEstim 
-  --                 cacheEstim 
-  --                 (lockEstim - fibEstim) 
-  --                 (parEstim - fibEstim)
-  -- print ( Stats.estPoint (fibParam param)
-  --       , Stats.estPoint (cacheParam param)
-  --       , Stats.estPoint (lockParam param)
-  --       , Stats.estPoint (joinParam param)
-  --       )
+  chizBStr <- BS.readFile fileName
 
   let
-    atomsGen = map return [cache mem, DslFib, DslVar]
+    chizInMb = decode chizBStr
+
+    atomsGen = map return [cache, DslFib, DslVar]
     genX :: QuickCheck.Gen Java
     genX = Java <$> QuickCheck.sized 
            (\sz -> 
-                let g = benchGenAnd atomsGen (Just lk1) (Just lk2) 5 sz
+                let g = benchGenAnd atomsGen 5 sz
                 in QuickCheck.suchThat g hasVar)
 
---    x :: Gen (BenchDsl String String
     x = DslVar
 
     genList 0 _  _    _   = []
@@ -199,45 +208,47 @@ main = do
           x = QuickCheck.unGen gen rand sz
       in x : genList (n-1) sz rand' gen
 
-    standardTests = 
-      Java <$> [ x
-               , cache mem
-               , x ||| x
-               , x |> x
-               , x |> cache mem
-               , x ||| cache mem
-               , x ||| x ||| cache mem
-               , x ||| x ||| x
-               , x ||| x ||| x ||| x
-               ]
+    -- standardTests = 
+    --   Java <$> [ x
+    --            , cache
+    --            , x ||| x
+    --            , x |> x
+    --            , x |> cache
+    --            , x ||| cache
+    --            , x ||| x ||| cache
+    --            , x ||| x ||| x
+    --            , x ||| x ||| x ||| x
+    --            ]
 
-    concLinkQueueRemoveChiz =
-      Chiz
-      { charName = "concurrent-linked-queue-remove.chiz"
-      , charRepl = h0Remove
-      , charResults = Nothing 
-      }
+    -- concLinkQueueRemoveChiz =
+    --   Chiz
+    --   { charName = "concurrent-linked-queue-remove.chiz"
+    --   , charRepl = h0Remove
+    --   , charResults = Nothing 
+    --   }
 
-    arrayBlockQueueRemoveChiz =
-      Chiz
-      { charName = "arrayed-blocking-queue-remove.chiz"
-      , charRepl = h1Remove
-      , charResults = Nothing 
-      }
+    -- arrayBlockQueueRemoveChiz =
+    --   Chiz
+    --   { charName = "arrayed-blocking-queue-remove.chiz"
+    --   , charRepl = h1Remove
+    --   , charResults = Nothing 
+    --   }
 
-    replX str DslVar = Just (Set.empty, str)
-    replX _   _      = Nothing
+  --   runChiz chiz = 
+  --     do res <- genStats env (replX $ charRepl chiz) standardTests
+  --        let chiz' = chiz {charResults = Just res}
+  --        writeFile (charName chiz') (show chiz')
 
-    runChiz chiz = 
-      do res <- genStats env (replX $ charRepl chiz) standardTests
-         let chiz' = chiz {charResults = Just res}
-         writeFile (charName chiz') (show chiz')
-
-    chizes = [concLinkQueueRemoveChiz, arrayBlockQueueRemoveChiz]
+  --   chizes = [concLinkQueueRemoveChiz, arrayBlockQueueRemoveChiz]
   
-  mapM_ runChiz chizes
+  -- mapM_ runChiz chizes
   -- stats <- collectStats env param [cache mem] (Just lk1) (Just lk2) 40
-
+  case chizInMb of
+    Just chizIn -> 
+      do chizIn' <- runChizInput env chizIn
+         BS.writeFile (fileName ++ ".out") (encode chizIn')
+    Nothing -> putStrLn "Failed to read Chiz input file"
+  
 h0Remove = qOp " q1.poll();"
 h1Remove = qOp " q2.poll();"
 

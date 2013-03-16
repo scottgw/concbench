@@ -1,5 +1,6 @@
 \begin{code}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
 {-# LANGUAGE FunctionalDependencies #-}
 module Bench where
@@ -18,12 +19,13 @@ class RunnableBench a where
     timeActual :: Environment -> a -> IO Stats.Estimate
 --    timeWithHold :: 
 
-class Arbitrary a => Bench a lock mem | a -> lock, a -> mem where
+class Arbitrary a => Bench a where
+    type Env a
     genAtom  :: Gen a
     estimate :: BenchParams a -> a -> Stats.Estimate
-    cache    :: mem -> a
-    lock1    :: lock -> a -> a
-    lock2    :: lock -> a -> a
+    cache    :: a
+    lock1    :: a -> a
+    lock2    :: a -> a
     (|>)     :: a -> a -> a
     (|||)    :: a -> a -> a
     benchSize :: a -> Int
@@ -47,52 +49,42 @@ data BenchSel =
   BenchSelPar | BenchSelSeq | BenchSelLock1| BenchSelLock2 
   deriving (Bounded, Enum)
 
-benchGen :: Bench a lock mem => mem -> Maybe lock -> Maybe lock -> Int -> Int -> Gen a
-benchGen mem lk1 lk2 parLimit n = 
-  benchGenAnd [return $ cache mem] lk1 lk2 parLimit n
+benchGen :: Bench a => Int -> Int -> Gen a
+benchGen parLimit n = 
+  benchGenAnd [return cache] parLimit n
 
-benchGenAnd others lk1Mb lk2Mb parLimit n = 
-  snd <$> benchGenAnd' others lk1Mb lk2Mb parLimit n
-benchGenAnd' :: Bench a lock mem 
+benchGenAnd others parLimit n = 
+  snd <$> benchGenAnd' others parLimit n
+benchGenAnd' :: Bench a
              => [Gen a]
-             -> Maybe lock -- ^ Lock #1, `Nothing` if it's already taken.
-             -> Maybe lock -- ^ Lock #2, `Nothing` if it's already taken.
              -> Int 
              -> Int 
              -> Gen (Int, a)
-benchGenAnd' others _ _ _ n
+benchGenAnd' others _ n
   | n <= 1 = (0,) <$> QuickCheck.oneof (genAtom:others)
-benchGenAnd' others lk1Mb lk2Mb parLimit n = do
+benchGenAnd' others parLimit n = do
   sel <- QuickCheck.arbitraryBoundedEnum
   let lSize = (n `div` 2) + n `rem` 2
       rSize = (n `div` 2)
   case sel of
     BenchSelPar -> 
         if parLimit == 0
-        then benchGenAnd' others lk1Mb lk2Mb parLimit n
+        then benchGenAnd' others parLimit n
         else do
           let parLimit' = parLimit - 1
-          (lNumPar, l) <- benchGenAnd' others lk1Mb lk2Mb parLimit' lSize
+          (lNumPar, l) <- benchGenAnd' others parLimit' lSize
           let parLimit'' = parLimit' - lNumPar
-          (rNumPar, r) <- benchGenAnd' others lk1Mb lk2Mb parLimit'' rSize
+          (rNumPar, r) <- benchGenAnd' others parLimit'' rSize
           return (lNumPar + rNumPar + 1,  l ||| r)
     BenchSelSeq -> do
-             (lPar, b1) <- benchGenAnd' others lk1Mb lk2Mb parLimit lSize
-             (rPar, b2) <- benchGenAnd' others lk1Mb lk2Mb (parLimit - lPar) lSize
+             (lPar, b1) <- benchGenAnd' others parLimit lSize
+             (rPar, b2) <- benchGenAnd' others (parLimit - lPar) lSize
              return (lPar + rPar, b1 |> b2)
     BenchSelLock1 -> 
-        case lk1Mb of
-          Just lk1 -> 
-              do
-                (p, b) <- benchGenAnd' others Nothing lk2Mb parLimit (n-1)
-                return (p, lock1 lk1 b)
-          Nothing -> benchGenAnd' others lk1Mb lk2Mb parLimit n
+      do (p, b) <- benchGenAnd' others parLimit (n-1)
+         return (p, lock1 b)
     BenchSelLock2 -> 
-        case lk2Mb of
-          Just lk2 -> 
-              do
-                (p, b) <- benchGenAnd' others lk1Mb Nothing parLimit (n-1)
-                return (p, lock2 lk2 b)
-          Nothing -> benchGenAnd' others lk1Mb lk2Mb parLimit n
+      do (p, b) <- benchGenAnd' others  parLimit (n-1)
+         return (p, lock2 b)
 
 \end{code}
