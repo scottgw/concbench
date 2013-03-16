@@ -18,9 +18,8 @@ import           GHC.Generics
 
 import qualified Statistics.Resampling.Bootstrap as Stats
 
-import Bench
-import Dsl
-import DslParse
+import           Dsl
+import           DslParse
 
 deriving instance Read Stats.Estimate
 

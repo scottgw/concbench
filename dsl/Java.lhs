@@ -156,9 +156,17 @@ wrapJavaBench (JavaSrcPart methods decls setup block) =
              ]
             )
 
+emptyJavaPart :: String -> JavaSrcPart
 emptyJavaPart = JavaSrcPart Set.empty Set.empty Set.empty
+
+singleJavaPart :: String -> String -> JavaSrcPart
 singleJavaPart d = JavaSrcPart (Set.singleton d) Set.empty Set.empty
+
+wrapPart :: (String -> String) -> JavaSrcPart -> JavaSrcPart
 wrapPart wrapper part = part {javaStr = wrapper (javaStr part) }
+
+unionPartsWith :: (String -> String -> String) 
+                  -> JavaSrcPart -> JavaSrcPart -> JavaSrcPart
 unionPartsWith f (JavaSrcPart mthds1 decls1 setup1 block1)
                  (JavaSrcPart mthds2 decls2 setup2 block2) =
   JavaSrcPart (mthds1 `Set.union` mthds2)
@@ -173,6 +181,7 @@ dslToASTWith this dsl =
       Nothing -> normalAST
     where
       normalAST = case dsl of
+        DslVar -> error "dslToASTWith: should not find DslVar"
         DslFib -> singleJavaPart fibDef "fib(37);"
         DslCache -> 
             let code = unlines [ "for (int cacheI = 0; cacheI < outerSize; cacheI++) {"

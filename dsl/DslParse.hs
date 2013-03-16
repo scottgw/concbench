@@ -13,15 +13,16 @@ import           Bench
 parseDsl :: String -> Either ParseError BenchDsl
 parseDsl = parse expr "<from string>"
 
-dslDef = 
-  T.emptyDef { T.reservedNames = ["fib", "cache", "<x>", "lock1", "lock2"]
-             , T.reservedOpNames = ["|||", ";"]
-             }
-
-tok = T.makeTokenParser dslDef
-
+expr :: Parsec String () BenchDsl
 expr = e
   where
+    dslDef = 
+      T.emptyDef { T.reservedNames = ["fib", "cache", "<x>", "lock1", "lock2"]
+                 , T.reservedOpNames = ["|||", ";"]
+                 }
+
+    tok = T.makeTokenParser dslDef
+    
     parens = T.parens tok
     reservedOp = T.reservedOp tok
     reserved = T.reserved tok

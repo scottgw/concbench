@@ -53,6 +53,7 @@ benchGen :: Bench a => Int -> Int -> Gen a
 benchGen parLimit n = 
   benchGenAnd [return cache] parLimit n
 
+benchGenAnd :: Bench b => [Gen b] -> Int -> Int -> Gen b
 benchGenAnd others parLimit n = 
   snd <$> benchGenAnd' others parLimit n
 benchGenAnd' :: Bench a

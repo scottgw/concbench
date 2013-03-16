@@ -9,14 +9,6 @@
 module Dsl where
 
 import           Control.Applicative
-import           Control.Concurrent
-import           Control.Monad
-
-import           Criterion
-import           Criterion.Analysis
-import           Criterion.Config
-import           Criterion.Environment
-import           Criterion.Monad
 
 import qualified Statistics.Resampling.Bootstrap as Stats
 
@@ -27,7 +19,6 @@ import           Test.QuickCheck (Arbitrary, Gen)
 import qualified Test.QuickCheck as QuickCheck
 
 import Bench
-import Cache
 
 data BenchDsl where
     DslVar   :: BenchDsl
@@ -40,15 +31,15 @@ data BenchDsl where
     deriving (Ord, Eq, Read, Show)
 
 instance Bench BenchDsl where
-    genAtom  = return DslFib
-    estimate = estimateDsl
-    cache    = DslCache
-    lock1    = DslLock1
-    lock2    = DslLock2
-    (|>)     = DslSeq
-    (|||)    = DslPar
-    benchSize = dslSize
-    normalize = canonicalDsl
+  genAtom  = return DslFib
+  estimate = estimateDsl
+  cache    = DslCache
+  lock1    = DslLock1
+  lock2    = DslLock2
+  (|>)     = DslSeq
+  (|||)    = DslPar
+  benchSize = dslSize
+  normalize = canonicalDsl
 
 
 pretty :: BenchDsl -> String
@@ -152,6 +143,7 @@ estimateDsl param ben =
     DslLock2 b -> estim b + lockParam param
     DslSeq b1 b2 -> estim b1 + estim b2
     DslPar b1 b2 -> (estim b1 `max` estim b2) + joinParam param
+    DslVar -> error "no estimate for DslVar"
   where
     estim = estimateDsl param
 

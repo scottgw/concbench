@@ -36,11 +36,11 @@ unlock  = void . flip putMVar ()
 type Lock = MVar ()
 
 {-# NOINLINE compileBench #-}
-compileBench :: BenchDsl Lock Memory -> IO ()
+compileBench :: BenchDsl -> IO ()
 compileBench DslFib  = fibM 32
 compileBench (DslCache mem) = memTask mem
-compileBench (DslLock1 l b) = lock l >> compileBench b >> unlock l
-compileBench (DslLock2 l b) = lock l >> compileBench b >> unlock l
+compileBench (DslLock1 b) = lock l >> compileBench b >> unlock l
+compileBench (DslLock2 b) = lock l >> compileBench b >> unlock l
 compileBench (DslSeq b1 b2) = compileBench b1 >> compileBench b2
 compileBench (DslPar b1 b2) = do
   barrier <- newEmptyMVar

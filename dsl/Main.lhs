@@ -8,7 +8,7 @@
 module Main where
 
 import           Control.Applicative
-import           Control.Lens
+import           Control.Lens (view, set, mapMOf)
 import           Control.Monad
 
 import           Criterion.Config
@@ -97,7 +97,7 @@ collectStats env param atoms maxSteps = do
              return res
 
 
-      updateWithResultMb results testCase Nothing = 
+      updateWithResultMb results _testCase Nothing = 
           do 
              return results
       updateWithResultMb results testCase (Just r) =
@@ -166,11 +166,11 @@ runChizInput env chizIn =
   where
     testCases = view chizTestCases chizIn
 
-    replX elem op DslVar = Just part
+    replX elm op DslVar = Just part
       where
         part = JavaSrcPart Set.empty
-                           (view elementDecls elem)
-                           (Set.singleton $ view elementReset elem)
+                           (view elementDecls elm)
+                           (Set.singleton $ view elementReset elm)
                            (view opCode op)
     replX _ _   _     = Nothing
     
@@ -178,8 +178,8 @@ runChizInput env chizIn =
     runChizElem elmnt = mapMOf elementOperations (mapM (runChizOp elmnt)) elmnt
 
     runChizOp :: Element -> Operation -> IO Operation
-    runChizOp elem op =
-      do res <- genStats env (replX elem op) testCases
+    runChizOp elm op =
+      do res <- genStats env (replX elm op) testCases
          let op' = set opResults (Just res) op
          return op'
 
@@ -190,72 +190,12 @@ main = do
 
   chizBStr <- BS.readFile fileName
 
-  let
-    chizInMb = decode chizBStr
-
-    atomsGen = map return [cache, DslFib, DslVar]
-    genX :: QuickCheck.Gen Java
-    genX = Java <$> QuickCheck.sized 
-           (\sz -> 
-                let g = benchGenAnd atomsGen 5 sz
-                in QuickCheck.suchThat g hasVar)
-
-    x = DslVar
-
-    genList 0 _  _    _   = []
-    genList n sz rand gen =
-      let (_val, rand') = next rand
-          x = QuickCheck.unGen gen rand sz
-      in x : genList (n-1) sz rand' gen
-
-    -- standardTests = 
-    --   Java <$> [ x
-    --            , cache
-    --            , x ||| x
-    --            , x |> x
-    --            , x |> cache
-    --            , x ||| cache
-    --            , x ||| x ||| cache
-    --            , x ||| x ||| x
-    --            , x ||| x ||| x ||| x
-    --            ]
-
-    -- concLinkQueueRemoveChiz =
-    --   Chiz
-    --   { charName = "concurrent-linked-queue-remove.chiz"
-    --   , charRepl = h0Remove
-    --   , charResults = Nothing 
-    --   }
-
-    -- arrayBlockQueueRemoveChiz =
-    --   Chiz
-    --   { charName = "arrayed-blocking-queue-remove.chiz"
-    --   , charRepl = h1Remove
-    --   , charResults = Nothing 
-    --   }
-
-  --   runChiz chiz = 
-  --     do res <- genStats env (replX $ charRepl chiz) standardTests
-  --        let chiz' = chiz {charResults = Just res}
-  --        writeFile (charName chiz') (show chiz')
-
-  --   chizes = [concLinkQueueRemoveChiz, arrayBlockQueueRemoveChiz]
-  
-  -- mapM_ runChiz chizes
-  -- stats <- collectStats env param [cache mem] (Just lk1) (Just lk2) 40
+  let chizInMb = decode chizBStr
   case chizInMb of
     Just chizIn -> 
       do chizIn' <- runChizInput env chizIn
          BS.writeFile (fileName ++ ".out") (encode chizIn')
     Nothing -> putStrLn "Failed to read Chiz input file"
-  
-h0Remove = qOp " q1.poll();"
-h1Remove = qOp " q2.poll();"
-
-h0Offer = qOp " q1.offer(dummy);"
-h1Offer = qOp " q2.offer(dummy);"
-
-qOp o = unlines ["for (int qi = 0; qi < qN; qi++){", o, "}"]
 \end{code}
 
 \end{document}
