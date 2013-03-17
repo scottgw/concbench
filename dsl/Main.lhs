@@ -31,10 +31,10 @@ import           System.Random
 import qualified Test.QuickCheck as QuickCheck
 import qualified Test.QuickCheck.Gen as QuickCheck
 
-import Bench
-import Chiz
-import Dsl
-import Java
+import           Bench
+import           Chiz
+import           Dsl
+import           Java
 \end{code}
 
 \begin{code}
@@ -185,17 +185,24 @@ runChizInput env chizIn =
 
 main :: IO ()
 main = do
-  fileName:_ <- getArgs
-  env <- withConfig defaultConfig measureEnvironment
+  fileName:rest <- getArgs
 
   chizBStr <- BS.readFile fileName
 
-  let chizInMb = decode chizBStr
+  print rest
+
+  let chizInMb = eitherDecode chizBStr
   case chizInMb of
-    Just chizIn -> 
-      do chizIn' <- runChizInput env chizIn
-         BS.writeFile (fileName ++ ".out") (encode chizIn')
-    Nothing -> putStrLn "Failed to read Chiz input file"
+    Right chizIn ->
+      case rest of
+        "csv":_ -> do
+          putStrLn "Converting to CSV"
+          writeChizCSV (fileName ++ ".csv") chizIn
+        _ ->
+          do env <- withConfig defaultConfig measureEnvironment
+             chizIn' <- runChizInput env chizIn
+             BS.writeFile (fileName ++ ".out") (encode chizIn')
+    Left err -> putStrLn $ "Failed to read Chiz input file: " ++ err
 \end{code}
 
 \end{document}

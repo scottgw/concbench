@@ -5,18 +5,25 @@
 module Chiz where
 
 import           Control.Applicative
-import           Control.Lens (makeLenses)
+import           Control.Arrow
+import           Control.Lens (view, makeLenses)
 import           Control.Monad
 
 import           Data.Aeson as Aeson
+import           Data.Aeson.Types
+import qualified Data.ByteString.Char8 as BS
 import           Data.Map (Map)
 import qualified Data.Map as Map
 import           Data.Set (Set)
+import qualified Data.Set as Set
 import qualified Data.Text as Text
+import qualified Data.Vector as V
 
 import           GHC.Generics
 
 import qualified Statistics.Resampling.Bootstrap as Stats
+
+import           Text.CSV
 
 import           Dsl
 import           DslParse
@@ -71,11 +78,11 @@ instance ToJSON Element where
   toJSON (Element typee name decls reset ops) =
     object [ "type" .= typee
            , "name" .= name
-           , "delcs" .= decls
-           , "reset" .= reset
+           , "decls" .= decls
+           , "reset" .= lines reset
            , "operations" .= ops
            ]
-
+  
 data Operation = 
   Operation 
   { _opName :: String
@@ -87,14 +94,21 @@ instance FromJSON Operation where
   parseJSON (Object v) =
     Operation <$> v .: "opName"
               <*> v .: "opCode"
-              <*> ((fmap Map.fromList) <$> (v .:? "opResults"))
+              <*> parseBenchMap
+    where
+      parseBenchMap :: Parser (Maybe BenchMap)
+      parseBenchMap =
+        do bmMb <- v .:? "opResults"
+           case bmMb of
+             Nothing -> return Nothing
+             Just bm -> return (Just $ Map.fromList bm)
   parseJSON _ = mzero
 
 instance ToJSON Operation where
   toJSON (Operation name code resultsMb) =
     object [ "opName" .= name
            , "opCode" .= code
-           , "opResults" .= fmap Map.toList  resultsMb
+           , "opResults" .= fmap Map.toList resultsMb
            ]
 
 instance FromJSON BenchDsl where
@@ -102,7 +116,7 @@ instance FromJSON BenchDsl where
     where
       dslP = 
         case parseDsl (Text.unpack txt) of
-          Left err -> fail (show err)
+          Left err -> error (show txt) -- fail (show err)
           Right v -> return v
   parseJSON _ = mzero
 
@@ -125,3 +139,38 @@ type BenchMap = Map BenchDsl Stats.Estimate
 makeLenses ''ChizInput
 makeLenses ''Element
 makeLenses ''Operation
+
+
+-- | Conversion of the Chiz to CSV to consume by
+-- other tools such as R (for charts).
+writeChizCSV :: FilePath -> ChizInput -> IO ()
+writeChizCSV path chizIn = do
+  let header = ["type", "operation", "test", "avg", "lower", "upper"]
+  writeFile path (printCSV (header : chizToRecords chizIn))
+
+chizToRecords :: ChizInput -> [Record]
+chizToRecords = concatMap elmToRecords . view chizTestElements
+
+elmToRecords :: Element -> [Record]
+elmToRecords elm =
+  map (elmTypeField:)
+      (concatMap opToRecord (view elementOperations elm))               
+  where
+    elmTypeField = view elementType elm
+
+opToRecord :: Operation -> [Record]
+opToRecord op =
+    map (opNameField:)
+        (resultRecords (view opResults op))
+    where
+      resultRecords = maybe [] resultsToRecords
+      
+      opNameField = view opName op
+
+      statFuncs = [Stats.estPoint, Stats.estLowerBound, Stats.estUpperBound]
+
+      resultsToRecords :: BenchMap -> [Record]
+      resultsToRecords =
+        map (uncurry (:)) .
+        map (pretty *** (\e -> map (show . ($ e)) statFuncs)) .
+        Map.toList

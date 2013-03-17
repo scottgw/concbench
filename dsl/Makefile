@@ -4,8 +4,11 @@ GHC_OPTS=-rtsopts -threaded -O2 -Wall -fno-warn-orphans
 
 all: bench
 
-bench: Main.lhs Bench.lhs Java.lhs Dsl.lhs
+bench: Main.lhs Bench.lhs Java.lhs Dsl.lhs Chiz.hs
 	ghc ${GHC_OPTS} $< -o $@
+
+chart: ChizChart.hs
+	ghc ${GHC_OPTS} $< -o $@ --make -main-is ChizChart
 
 cache: Cache.hs
 	ghc ${GHC_OPTS} $< -o $@

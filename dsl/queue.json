@@ -28,6 +28,14 @@
                     "opCode": "for (int qi = 0; qi < qN; qi++) q.remove();"
                 },
                 { 
+                    "opName": "peek",
+                    "opCode": "for (int qi = 0; qi < qN; qi++) q.peek();"
+                },
+                { 
+                    "opName": "poll",
+                    "opCode": "for (int qi = 0; qi < qN; qi++) q.poll();"
+                },
+                { 
                     "opName": "offer",
                     "opCode": "for (int qi = 0; qi < qN; qi++) q.offer(dummy);"
                 }
@@ -49,6 +57,14 @@
                 { 
                     "opName": "remove",
                     "opCode": "for (int qi = 0; qi < qN; qi++) q.remove();"
+                },
+                { 
+                    "opName": "peek",
+                    "opCode": "for (int qi = 0; qi < qN; qi++) q.peek();"
+                },
+                { 
+                    "opName": "poll",
+                    "opCode": "for (int qi = 0; qi < qN; qi++) q.poll();"
                 },
                 { 
                     "opName": "offer",
