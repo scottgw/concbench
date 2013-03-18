@@ -175,11 +175,14 @@ runChizInput env chizIn =
     replX _ _   _     = Nothing
     
     runChizElem :: Element -> IO Element
-    runChizElem elmnt = mapMOf elementOperations (mapM (runChizOp elmnt)) elmnt
+    runChizElem elmnt = 
+      do putStrLn (view elementType elmnt)
+         mapMOf elementOperations (mapM (runChizOp elmnt)) elmnt
 
     runChizOp :: Element -> Operation -> IO Operation
     runChizOp elm op =
-      do res <- genStats env (replX elm op) testCases
+      do putStrLn (view opName op)
+         res <- genStats env (replX elm op) testCases
          let op' = set opResults (Just res) op
          return op'
 

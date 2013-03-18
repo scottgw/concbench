@@ -71,6 +71,37 @@
                     "opCode": "for (int qi = 0; qi < qN; qi++) q.offer(dummy);"
                 }
             ]
+        },
+        { 
+            "type": "LinkedBlockingQueue",
+            "name": "q",
+            "decls": ["final LinkedBlockingQueue<Object> q = new LinkedBlockingQueue<Object>();",
+                      "final int qN = 100000;",
+                      "final Object dummy = new Object();"
+                     ],
+            "reset": ["q.clear();",
+                      "for (int qi = 0; qi < qN*10; qi++) {",
+                      "  q.offer (dummy);",
+                      "}"
+                     ],
+            "operations": [
+                { 
+                    "opName": "remove",
+                    "opCode": "for (int qi = 0; qi < qN; qi++) q.remove();"
+                },
+                { 
+                    "opName": "peek",
+                    "opCode": "for (int qi = 0; qi < qN; qi++) q.peek();"
+                },
+                { 
+                    "opName": "poll",
+                    "opCode": "for (int qi = 0; qi < qN; qi++) q.poll();"
+                },
+                { 
+                    "opName": "offer",
+                    "opCode": "for (int qi = 0; qi < qN; qi++) q.offer(dummy);"
+                }
+            ]
         }
     ]
 }
