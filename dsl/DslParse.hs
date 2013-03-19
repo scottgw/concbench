@@ -17,7 +17,7 @@ expr :: Parsec String () BenchDsl
 expr = e
   where
     dslDef = 
-      T.emptyDef { T.reservedNames = ["fib", "cache", "<x>", "lock1", "lock2"]
+      T.emptyDef { T.reservedNames = ["fib", "cache", "<x>", "lock1", "lock2", "sleep"]
                  , T.reservedOpNames = ["|||", ";"]
                  }
 
@@ -30,6 +30,7 @@ expr = e
     term = parens e
       <|> (reserved "fib" >> return DslFib)
       <|> (reserved "<x>" >> return DslVar)
+      <|> (reserved "sleep" >> return DslSleep)
       <|> (reserved "cache" >> return DslCache)
 
     table = [ [unary "lock1" lock1, unary "lock2" lock2]

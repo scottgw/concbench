@@ -40,6 +40,7 @@ instance Arbitrary Java where
 instance Bench Java where
     genAtom   = Java <$> genAtom
     cache     = Java cache
+    sleep     = Java sleep
     lock1 b   = Java (lock1 (unJava b))
     lock2 b   = Java (lock2 (unJava b))
     b1 |> b2  = Java (unJava b1 |> unJava b2)
@@ -51,9 +52,9 @@ instance Bench Java where
 instance RunnableBench Java where
     timeActual = timeActualJava
 
-estimateJava :: BenchParams Java -> Java -> Stats.Estimate
-estimateJava (BenchParams f c l j) java = 
-  estimateDsl (BenchParams f c l j) (unJava java)
+estimateJava :: BenchParams -> Java -> Stats.Estimate
+estimateJava params java = 
+  estimateDsl params (unJava java)
 
 timeActualJava :: Environment -> Java -> IO Stats.Estimate
 timeActualJava = timeActualJavaWith (const Nothing)
@@ -61,7 +62,7 @@ timeActualJava = timeActualJavaWith (const Nothing)
 timeActualJavaWith :: JavaVarRepl -> Environment -> Java -> IO Stats.Estimate
 timeActualJavaWith this _env java = do
   timeVector <- UV.fromList <$> timeToRunWith this java
-  analysis <- analyseSample 0.95 timeVector 100
+  analysis <- analyseSample 0.95 timeVector 25
   return (anMean analysis)
 
 
@@ -128,7 +129,7 @@ wrapJavaBench (JavaSrcPart methods decls setup block) =
              ,"    for (int i = 0; i < outerSize; i++) {"
              ,"      memArray[i] = new int[innerSize];"
              ,"    }"
-             ,"    for (int i = 0; i < 20; i++) {"
+             ,"    for (int i = 0; i < 10; i++) {"
              ,"       long startTime = System.nanoTime();"
              ,unlines (Set.toList setup)
              ,"      " ++ block
@@ -183,6 +184,15 @@ dslToASTWith this dsl =
       normalAST = case dsl of
         DslVar -> error "dslToASTWith: should not find DslVar"
         DslFib -> singleJavaPart fibDef "fib(37);"
+        DslSleep -> emptyJavaPart $
+                    unlines ["for (int sleepi = 0; sleepi < 50; sleepi++){"
+                            ,"  try {"
+                            ,"    Thread.sleep(0,10000);"
+                            ,"  } catch (Exception e) {"
+                            ,"    e.printStackTrace();"
+                            ,"  }"
+                            ,"}"
+                            ]
         DslCache -> 
             let code = unlines [ "for (int cacheI = 0; cacheI < outerSize; cacheI++) {"
                                , "  for (int cacheJ = 0; cacheJ < innerSize; cacheJ++) {"

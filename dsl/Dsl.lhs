@@ -24,6 +24,7 @@ data BenchDsl where
     DslVar   :: BenchDsl
     DslFib   :: BenchDsl
     DslCache :: BenchDsl
+    DslSleep :: BenchDsl
     DslLock1 :: BenchDsl -> BenchDsl
     DslLock2 :: BenchDsl -> BenchDsl
     DslSeq   :: BenchDsl -> BenchDsl -> BenchDsl
@@ -34,6 +35,7 @@ instance Bench BenchDsl where
   genAtom  = return DslFib
   estimate = estimateDsl
   cache    = DslCache
+  sleep    = DslSleep
   lock1    = DslLock1
   lock2    = DslLock2
   (|>)     = DslSeq
@@ -44,6 +46,7 @@ instance Bench BenchDsl where
 
 pretty :: BenchDsl -> String
 pretty DslVar = "<x>"
+pretty DslSleep = "sleep"
 pretty DslFib = "fib"
 pretty DslCache = "cache"
 pretty (DslLock1 b) = concat ["lock1(", pretty b, ")"]
@@ -57,6 +60,7 @@ dslSize dsl =
       DslVar       -> 1
       DslFib       -> 1
       DslCache     -> 1
+      DslSleep     -> 1
       DslLock1 b   -> 1 + dslSize b
       DslLock2 b   -> 1 + dslSize b
       DslSeq b1 b2 -> 1 + dslSize b1 + dslSize b2
@@ -132,13 +136,14 @@ dslGen n = do
       r = (n `div` 2)
   op <$> dslGen l <*> dslGen r
 
-estimateDsl :: BenchParams BenchDsl
+estimateDsl :: BenchParams
             -> BenchDsl
             -> Stats.Estimate
 estimateDsl param ben =
   case ben of
     DslFib -> fibParam param
     DslCache -> cacheParam param
+    DslSleep -> sleepParam param
     DslLock1 b -> estim b + lockParam param
     DslLock2 b -> estim b + lockParam param
     DslSeq b1 b2 -> estim b1 + estim b2
@@ -156,7 +161,6 @@ timeAction act = do
       nanoDiff = Clock.nsec t2 - Clock.nsec t1
       diff = fromIntegral secDiff + (fromIntegral nanoDiff / 10^(9::Int))
   return (diff, r)
-
 
 instance Num Stats.Estimate where
   Stats.Estimate av1 lower1 upper1 _ -

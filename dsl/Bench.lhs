@@ -22,8 +22,9 @@ class RunnableBench a where
 class Arbitrary a => Bench a where
     type Env a
     genAtom  :: Gen a
-    estimate :: BenchParams a -> a -> Stats.Estimate
+    estimate :: BenchParams -> a -> Stats.Estimate
     cache    :: a
+    sleep    :: a
     lock1    :: a -> a
     lock2    :: a -> a
     (|>)     :: a -> a -> a
@@ -31,15 +32,16 @@ class Arbitrary a => Bench a where
     benchSize :: a -> Int
     normalize :: a -> a
 
-data BenchParams a =
+data BenchParams =
   BenchParams 
   { fibParam :: Stats.Estimate
   , cacheParam :: Stats.Estimate
+  , sleepParam :: Stats.Estimate
   , lockParam :: Stats.Estimate
   , joinParam :: Stats.Estimate
   }
 
-instance Show (BenchParams a) where
+instance Show BenchParams where
     show params = concat ["fib: ", show $ fibParam params
                          ,"lock: ", show $ lockParam params
                          ,"join: ", show $ joinParam params
@@ -51,7 +53,7 @@ data BenchSel =
 
 benchGen :: Bench a => Int -> Int -> Gen a
 benchGen parLimit n = 
-  benchGenAnd [return cache] parLimit n
+  benchGenAnd (map return [cache, sleep]) parLimit n
 
 benchGenAnd :: Bench b => [Gen b] -> Int -> Int -> Gen b
 benchGenAnd others parLimit n = 

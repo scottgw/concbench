@@ -50,7 +50,7 @@ Random checking of tests
 \begin{code}
 decideBenchMb :: (RunnableBench a, Bench a) => 
                  Environment
-              -> BenchParams a
+              -> BenchParams
               -> a
               -> IO (Maybe (Double, Double))
 decideBenchMb env param b = do
@@ -72,7 +72,7 @@ threshRatio x1 x2 = abs (max x1 x2 / min x1 x2) > 1.10
 collectStats :: forall a . 
                 (Show a, Ord a, RunnableBench a, Bench a) => 
                 Environment
-             -> BenchParams a
+             -> BenchParams
              -> [a]
              -> Int
              -> IO (Map a (Double, Double))
