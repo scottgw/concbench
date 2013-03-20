@@ -16,7 +16,7 @@ import qualified Statistics.Resampling.Bootstrap as Stats
 
 
 class RunnableBench a where
-    timeActual :: Environment -> a -> IO Stats.Estimate
+    timeActual :: Environment -> a -> IO [Double]
 --    timeWithHold :: 
 
 class Arbitrary a => Bench a where

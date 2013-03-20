@@ -56,15 +56,11 @@ estimateJava :: BenchParams -> Java -> Stats.Estimate
 estimateJava params java = 
   estimateDsl params (unJava java)
 
-timeActualJava :: Environment -> Java -> IO Stats.Estimate
+timeActualJava :: Environment -> Java -> IO [Double]
 timeActualJava = timeActualJavaWith (const Nothing)
 
-timeActualJavaWith :: JavaVarRepl -> Environment -> Java -> IO Stats.Estimate
-timeActualJavaWith this _env java = do
-  timeVector <- UV.fromList <$> timeToRunWith this java
-  analysis <- analyseSample 0.95 timeVector 25
-  return (anMean analysis)
-
+timeActualJavaWith :: JavaVarRepl -> Environment -> Java -> IO [Double]
+timeActualJavaWith this _env java = timeToRunWith this java
 
 data JavaSrcPart = 
   JavaSrcPart 
@@ -91,7 +87,7 @@ generateByteCode  = generateByteCodeWith (const Nothing)
 
 runByteCode :: FilePath -> IO [Double]
 runByteCode path = do
-    output <- readProcess "java" ["-cp",cpOpt, path] ""
+    output <- readProcess "java" ["-cp",cpOpt, "-server", path] ""
     case reads output of
       [] -> error output
       (x,_):_ -> return x
@@ -134,11 +130,12 @@ wrapJavaBench (JavaSrcPart methods decls setup block) =
              ,unlines (Set.toList setup)
              ,"      " ++ block
              ,"    }"
-             ,"    for (int i = 0; i < 100; i++) {"
+             ,"    for (int i = 0; i < 50; i++) {"
              ,"      for (int j = 0; j < outerSize; j++) {"
              ,"        memArray[j] = new int[innerSize];"
              ,"      }"
              ,unlines (Set.toList setup)
+             ,"      System.gc();"
              ,"      long startTime = System.nanoTime();"
              ,"      " ++ block
              ,"      long finishTime = System.nanoTime();"
@@ -185,7 +182,7 @@ dslToASTWith this dsl =
         DslVar -> error "dslToASTWith: should not find DslVar"
         DslFib -> singleJavaPart fibDef "fib(37);"
         DslSleep -> emptyJavaPart $
-                    unlines ["for (int sleepi = 0; sleepi < 50; sleepi++){"
+                    unlines ["for (int sleepi = 0; sleepi < 25; sleepi++){"
                             ,"  try {"
                             ,"    Thread.sleep(0,10000);"
                             ,"  } catch (Exception e) {"

@@ -4,10 +4,10 @@
                "<x> ||| <x>",
                "<x> ||| <x> ||| <x>",
                "<x> ||| <x> ||| <x> ||| <x>",
-               "sleep",
-               "<x> ||| sleep",
-               "<x> ||| <x> ||| sleep",
-               "<x> ||| <x> ||| <x> ||| sleep"
+               "cache",
+               "<x> ||| cache",
+               "<x> ||| <x> ||| cache",
+               "<x> ||| <x> ||| <x> ||| cache"
              ],
     "elements": [
         {

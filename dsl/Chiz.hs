@@ -133,7 +133,7 @@ data Chiz =
   , charResults :: Maybe BenchMap
   } deriving (Read, Show)
 
-type BenchMap = Map BenchDsl Stats.Estimate
+type BenchMap = Map BenchDsl [Double]
 
 
 makeLenses ''ChizInput
@@ -145,7 +145,7 @@ makeLenses ''Operation
 -- other tools such as R (for charts).
 writeChizCSV :: FilePath -> ChizInput -> IO ()
 writeChizCSV path chizIn = do
-  let header = ["type", "operation", "test", "avg", "lower", "upper"]
+  let header = ["type", "operation", "test", "time"]
   writeFile path (printCSV (header : chizToRecords chizIn))
 
 chizToRecords :: ChizInput -> [Record]
@@ -167,10 +167,7 @@ opToRecord op =
       
       opNameField = view opName op
 
-      statFuncs = [Stats.estPoint, Stats.estLowerBound, Stats.estUpperBound]
-
       resultsToRecords :: BenchMap -> [Record]
       resultsToRecords =
-        map (uncurry (:)) .
-        map (pretty *** (\e -> map (show . ($ e)) statFuncs)) .
+        concatMap (\ (dsl, times) -> map (\s -> [pretty dsl, s]) $ map show times) .
         Map.toList

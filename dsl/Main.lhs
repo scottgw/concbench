@@ -58,8 +58,10 @@ decideBenchMb env param b = do
   real <- timeActual env b
 
   let 
+      average :: [Double] -> Double
+      average xs = sum xs / fromIntegral (length xs)
       estimPt = Stats.estPoint estim
-      realPt  = Stats.estPoint real
+      realPt  = average real
       reject  = threshRatio estimPt realPt
 
   if reject
