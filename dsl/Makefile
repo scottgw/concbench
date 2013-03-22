@@ -16,6 +16,10 @@ cache: Cache.hs
 bench.pdf: bench.tex
 	pdflatex bench.tex
 
+
+dsl.tex: Flow.lhs
+	lhs2TeX -o $@ $<
+
 main.tex: Main.lhs
 	lhs2TeX -o $@ $<
 
