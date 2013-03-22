@@ -17,11 +17,17 @@ bench.pdf: bench.tex
 	pdflatex bench.tex
 
 
-dsl.tex: Flow.lhs
+flow.tex: Flow.lhs
 	lhs2TeX -o $@ $<
 
 main.tex: Main.lhs
 	lhs2TeX -o $@ $<
+
+mylhs.sty: mylhs.lhs
+	lhs2TeX -o $@ $<
+
+minidoc.pdf: minidoc.tex flow.tex mylhs.sty
+	pdflatex minidoc.tex
 
 clean:
 	@rm -f *.class *.hi *.o bench main.tex bench.pdf *.java
