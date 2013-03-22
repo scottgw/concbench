@@ -1,3 +1,5 @@
+%include polycode.fmt
+\begin{code}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE MultiParamTypeClasses #-}
@@ -22,9 +24,13 @@ import qualified Prelude as Pre  ((.), id)
 import           Test.QuickCheck (Gen)
 import qualified Test.QuickCheck.Gen as Test
 import qualified Test.QuickCheck.Arbitrary as Test
-
+\end{code}
+To 
+\begin{code}
 data Nat = Zero | Succ Nat | End | DoubleIdx | Nat :*: Nat
+\end{code}
 
+\begin{code}
 class IdxCategory (arrow :: Nat -> Nat -> *) where
   (.) :: arrow b c -> arrow a b -> arrow a c
   id  :: arrow a a
@@ -393,3 +399,4 @@ instance BenchArrow B where
 --   fromInteger i | i < 0 = error "Nat.fromIntegral: can't have natural less than zero"
 --   fromInteger 0 = Zero
 --   fromInteger i = Succ (fromInteger (i-1))
+\end{code}
