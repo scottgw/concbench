@@ -17,6 +17,7 @@
 {-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE TypeOperators #-}
 
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -42,13 +43,19 @@ as well as ``special'' types that signify the end
 of a benchmark and the time reporting as a
 double precision floating point number.
 \begin{code}
-data TypeIdx  = Zero
-              | Succ TypeIdx
-              | TypeIdx :*: TypeIdx
-              | TypeIdx :+: TypeIdx
-              | PreDef TypeIdx
-              | End
-              | DoubleIdx
+type a :*: b = (a,b)
+type a :+: b = Either a b
+
+-- data TypeIdx  = Zero
+--               | Succ TypeIdx
+--               -- | TypeIdx :*: TypeIdx
+--               -- | TypeIdx :+: TypeIdx
+--               | PreDef 
+data PreDef a = PreDef a
+data Zero = Zero
+data Succ a = Succ a
+data End
+data DoubleIdx
 \end{code}
 The definition of the standard |Category| is restricted to
 operate only on the |TypeIdx| \emph{kind} (the type of types).
@@ -115,6 +122,7 @@ second f = swap >>> first f >>> swap
 \end{code}
 %if False
 \begin{code}
+{-# NOINLINE (>>>) #-}
 infixr 3 ***
 infixr 3 &&&
 \end{code}
@@ -150,12 +158,12 @@ type-class definition below:
 \begin{code}
 class BenchArrow arrow => CustomArrow arrow 
  where
-  type Matrix arrow :: TypeIdx
+  type Matrix arrow :: *
   genMatrix :: arrow a (Matrix arrow)
   matMul :: 
     arrow (Matrix arrow :*: Matrix arrow) (Matrix arrow)
 
-  type Lock arrow :: TypeIdx
+  type Lock arrow :: *
   genLock :: arrow a (Lock arrow)
   lock :: arrow (Lock arrow) (Lock arrow)
   unlock :: arrow (Lock arrow) (Lock arrow)
@@ -217,7 +225,7 @@ doubleMul =
 data Eqq a b where
     Eqq :: Eqq a a
 
-data TType :: TypeIdx -> * where
+data TType a where
     TTEnd  :: TType End
     TTZero :: TType Zero
     TTDbl  :: TType DoubleIdx

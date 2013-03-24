@@ -14,7 +14,7 @@
 {-# LANGUAGE DataKinds #-}
 module FlowBench ( parseAndTypeCheck
                  , lookupTypeName
-                 , TypeIdx (..)
+--                 , TypeIdx (..)
                  , TBench(..)
                  , TType(..)
                  , TypedArrow(..)
@@ -169,7 +169,7 @@ typeCheck' typeMap arrMap tIn expr =
     go :: TType n -> UTBench -> Maybe (TypedBench n)
     go = typeCheck' typeMap arrMap
 
-data TBench :: TypeIdx -> TypeIdx -> * where
+data TBench a b where
   Var     :: String -> String -> TBench a b
   Noop    :: TBench a a
   Par     :: TBench a b -> TBench c d -> TBench (a :*: c) (b :*: d)
