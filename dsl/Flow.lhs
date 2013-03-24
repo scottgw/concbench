@@ -26,9 +26,6 @@ module Flow where
 
 import Data.Maybe
 
-import Prelude hiding ((.), id)
-import qualified Prelude as Pre  ((.), id)
-
 import           Test.QuickCheck (Gen)
 import qualified Test.QuickCheck.Gen as Test
 import qualified Test.QuickCheck.Arbitrary as Test
@@ -45,24 +42,28 @@ as well as ``special'' types that signify the end
 of a benchmark and the time reporting as a
 double precision floating point number.
 \begin{code}
-data TypeIdx  = Zero | Succ TypeIdx
-          | TypeIdx :*: TypeIdx | TypeIdx :+: TypeIdx
-          | End | DoubleIdx 
+data TypeIdx  = Zero
+              | Succ TypeIdx
+              | TypeIdx :*: TypeIdx
+              | TypeIdx :+: TypeIdx
+              | PreDef TypeIdx
+              | End
+              | DoubleIdx
 \end{code}
 The definition of the standard |Category| is restricted to
 operate only on the |TypeIdx| \emph{kind} (the type of types).
 \begin{code}
-class IdxCategory (cat :: TypeIdx -> TypeIdx -> *) 
+class IdxCategory cat
   where
-    (.) :: cat b c -> cat a b -> cat a c
-    id  :: cat a a
+    compIdx :: cat b c -> cat a b -> cat a c
+    idIdx  :: cat a a
 \end{code}
 It's convenient to define a forward
 composition operator
 \begin{code}
 (>>>) :: IdxCategory cat => 
          cat a b -> cat b c -> cat a c
-(>>>) = flip (.)
+(>>>) = flip compIdx
 \end{code}
 Similarly, we redefine the notion of |Arrow| to inherit
 from the indexed category type-class.
@@ -125,15 +126,22 @@ New operations are present:
  \item |sink| -- an arrow which just ``uses'' the incoming 
    data and produces a special value |End|.
    The purpose is to denote the end of a computation.
- \item |alias| -- creates a binding of two types of data to the 
-   same instance.
+ \item |reuse| -- allows data to be shared.
+ \item |forget1| -- allows data to be forgotten.
+   This should be used carefully, one should ensure that this
+   data was previously used in something with a side-effect 
+   or it may be optimized away by the underlying
+   compiler or runtime.
+   |sink| would be the safer alternative,
+   as it produces a side-effect for the given input data.
  \item |time| -- runs a computation and times the execution.
 \end{itemize}
 
 \begin{code}
 class IdxArrow arrow => BenchArrow arrow where
+  reuse :: arrow a (a :*: a)
+  forget1 :: arrow (a :*: b) b
   sink  :: arrow a End
-  alias :: arrow (b :*: b) b
   time  :: arrow a b -> arrow a (b :*: DoubleIdx)
 \end{code}
 An example of how the typeclasses above can be 
@@ -149,7 +157,8 @@ class BenchArrow arrow => CustomArrow arrow
 
   type Lock arrow :: TypeIdx
   genLock :: arrow a (Lock arrow)
-  lock :: arrow a b -> arrow (Lock arrow :*: a) b
+  lock :: arrow (Lock arrow) (Lock arrow)
+  unlock :: arrow (Lock arrow) (Lock arrow)
 \end{code}
 In this benchmark, there are two types of data
 |Lock|s, and |Matrix|s, with associated operations.
@@ -161,21 +170,30 @@ there is no particular type that is required to
 create a |Matrix| or a |Lock|,
 although they could take parameters.
 
-The |lock| operation is unique as it is a function
-which takes an arrow,
-meaning that it transforms one arrow into another.
-In particular, it transforms a regular arrow
-into one that also requires a |Lock| to operate,
-with the intension that the input argument
-will now be protected by the |Lock|.
-This can be seen below where two benchmarks
-that use the same input data will now use
-a lock to protect access to the structure.
+The |lock| and |unlock| operations perform the
+expected tasks, and should be used to guard computations.,
+Usage of these arrows can be seen below where
+|protect| constructs an arrow that 
+requires in addition to the normal argument a |Lock|.
 \begin{code}
-shareALock :: CustomArrow arrow =>
+protect :: CustomArrow arrow =>
+           arrow a b ->
+           arrow (Lock arrow :*: a) (Lock arrow :*: b)
+protect f = first lock >>> second f >>> first unlock
+\end{code}
+|protect| can then be used to construct
+a benchmark that,
+given two benchmarks requiring the same type of input,
+will safely execute both in parallel.
+Notice the |Lock| type does not appear here
+as it was generated and forgotten within the function.
+\begin{code}
+safeShare :: CustomArrow arrow =>
               arrow a b -> arrow a c -> arrow a (b :*: c)
-shareALock f g = 
-  (genLock &&& id) >>> (lock f &&& lock g)
+safeShare f g = 
+  reuse >>> first genLock >>> (protect' f &&& protect' g)
+  where
+    protect' h = protect h >>> forget1
 \end{code}
 Below we see an example of generating two matricies,
 multiplying them both in parallel,
@@ -206,12 +224,21 @@ data TType :: TypeIdx -> * where
     TTSucc :: TType a -> TType (Succ a)
     TTPair :: TType a -> TType b -> TType (a :*: b)
 
+ttypeEq :: TType a -> TType b -> Bool
+ttypeEq t1 t2 =
+  case (t1, t2) of
+    (TTEnd, TTEnd) -> True
+    (TTZero, TTZero) -> True
+    (TTDbl, TTDbl) -> True
+    (TTPair a1 b1, TTPair a2 b2) -> ttypeEq a1 a2 && ttypeEq b1 b2
+    (TTSucc a1, TTSucc a2) -> ttypeEq a1 a2
+    _ -> False
+
 toInt :: TType n -> Int
 toInt i = 
   case i of
     TTSucc n -> 1 + toInt n
     _ -> 0
-  
 
 instance Show (TType a) where
   show t =
@@ -278,7 +305,7 @@ data TypedArrow arrow = forall a b . arrow a b ::: ArrowType a b
 
 arrows1 :: BenchArrow arrow => [TType a -> TypedArrow arrow]
 arrows1 = [ \ ty -> sink ::: ArrSinkType ty 
-          , \ ty -> id ::: ArrIdType ty 
+          , \ ty -> idIdx ::: ArrIdType ty 
           ]
 
 
@@ -379,7 +406,6 @@ arrowFilter startTy endTy arrs =
             do Eqq <- testType startTy (getInType ft)
                Eqq <- testType endTy (getOutType ft)
                return f
-
 
 class IdxArrow arrow => IdxArrowAlt arrow where
     (+++) :: arrow a b -> arrow c d -> arrow (a :+: c) (b :+: d)
