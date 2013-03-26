@@ -1,6 +1,3 @@
-\newcommand{\sss}[0]{\star\hspace{-0.4em}\star\hspace{-0.4em}\star}
-\newcommand{\aaa}[0]{\hspace{0.1em}\&\hspace{-0.4em}\&\hspace{-0.4em}\&\hspace{0.1em}}
-
 %include polycode.fmt
 %format :+: = "\mathbf{\plus}"
 %format :*: = "\times"
@@ -25,86 +22,118 @@
 {-# LANGUAGE DataKinds #-}
 module Flow where
 
+import           Control.Category
 import Data.Maybe
+
+import Prelude hiding ((.), id)
 
 import           Test.QuickCheck (Gen)
 import qualified Test.QuickCheck.Gen as Test
 import qualified Test.QuickCheck.Arbitrary as Test
 \end{code}
 %endif
-Since the embedding is well-typed, we need a way
-to transmit arbitrary types from the target language
-to our embedding.
-This is done by enumerating the types with
-natural numbers, as below.
-There are also constructors for 
-product and sum types,
-as well as ``special'' types that signify the end
-of a benchmark and the time reporting as a
-double precision floating point number.
+Since the domain specific language for benchmarks
+must be abstract,
+it builts on simple categorical structures.
+For starters, every benchmark forms a category,
 \begin{code}
-type a :*: b = (a,b)
-type a :+: b = Either a b
 
--- data TypeIdx  = Zero
---               | Succ TypeIdx
---               -- | TypeIdx :*: TypeIdx
---               -- | TypeIdx :+: TypeIdx
---               | PreDef 
-data PreDef a = PreDef a
-data Zero = Zero
-data Succ a = Succ a
-data End
-data DoubleIdx
 \end{code}
-The definition of the standard |Category| is restricted to
-operate only on the |TypeIdx| \emph{kind} (the type of types).
-\begin{code}
-class IdxCategory cat
-  where
-    compIdx :: cat b c -> cat a b -> cat a c
-    idIdx  :: cat a a
-\end{code}
-It's convenient to define a forward
-composition operator
-\begin{code}
-(>>>) :: IdxCategory cat => 
-         cat a b -> cat b c -> cat a c
-(>>>) = flip compIdx
-\end{code}
-Similarly, we redefine the notion of |Arrow| to inherit
-from the indexed category type-class.
-The indexed arrows also cannot lift arbitrary Haskell functions;
-as such the |arr :: Arrow arrow => (a -> b) -> arrow a b|
-function was removed.
-\begin{code}
-class IdxCategory arrow => IdxArrow arrow where
-  (***) :: arrow a b -> arrow c d 
-           -> arrow (a :*: c) (b :*: d)
-  (&&&) :: arrow a b -> arrow a d 
-           -> arrow a         (b :*: d)
-  first :: arrow a b -> arrow (a :*: c) (b :*: c)
-  swap  :: arrow (a :*: c) (c :*: a)
-\end{code}
-Of course any instance of these clases must  
-preserve the existing categorical laws
+The objects of this category are the types of data
+that the benchmarks will consume or produce.
+Here, |cat| refers to a morphism between objects.
+The morphism operation |.| corresponds to  morphism composition  and 
+|id| corresponds to the identity morphism.
+These satisfy the normal categorical laws,
 \[
 \begin{array}{rcl}
-id \circ f & = & f \\
-f \circ id & = & f \\
+\id \circ f & = & f \\
+f \circ \id & = & f \\
 f \circ (g \circ h) & = & (f \circ g) \circ h
 \end{array}
 \]
-and also a reduced set of arrow laws
-(removing those that describe the lifting |arr| operation)
+It's convenient to define a forward
+composition operator which just reverses
+of normal composition
+\begin{code}
+\end{code}
+
+For a realization of this category for an imperative language
+such as Java, it would be natural to define
+|>>>| as function composition.
+For example, |toString >>> length :: Object -> Integer| would become for example:
+\begin{lstlisting}[language=java]
+String s = obj.toString();
+Integer n = s.length();
+\end{lstlisting}
+Assuming some input string. Of course in Java the data (obj, s, n)
+could also be in argument position of a static call
+rather than target position.
+Similarly, for Java the |id| would become a no-op.
+
+However, such a simple construction does not give
+enough power to construct very interesting benchmarks.
+For this we draw on the concept of the arrow from~\cite{hughes:2000:arrow},
+which is a generalization of a monad.
+This cannot be used directly though,
+as the original formulation allows direct lifting of Haskell functions
+via the |arr| method in the definition of the arrow.
+One clearly cannot lift an arbitrary Haskell function into Java
+without some serious work (compiling Haskell to Java),
+so it is removed from the interface.
+
+|arr| could be used to build more arrows,
+consequently due to its removal
+the |Arrow| must now explicitly define more operations
+as they cannot be created via |arr| anymore.
+Additionally, even operations that could be defined
+via the remaining operations, such as |***|,
+are still left in the interface
+to allow implementations to override their behaviour directly.
+This is in an effort to have some separation
+between control flow operations like |>>>| and |***|
+and type flow operations, such as |swap|, |first|, and |share|.
+\begin{code}
+class Category arrow => Arrow arrow where
+  (***)  :: arrow a b -> arrow c d 
+           -> arrow (a :*: c) (b :*: d)
+  share  :: arrow a (a, a)
+  first  :: arrow a b -> arrow (a :*: c) (b :*: c)
+  swap   :: arrow (a :*: c) (c :*: a)
+\end{code}
+The relevant arrow laws have now changed to reflect
+this modified interface,
+and become:
 \[
 \begin{array}{rcl}
-first (f \ggg g) & = & first f \ggg first g \\
+\first (f \ggg g) & = & \first f \ggg \first g \\
+\swap \ggg \swap & = & \id \\
+\share \ggg \swap & = & \share
 \end{array}
 \]
+
+From here, 
+a fair amount of other operations can be defined
+by composition.
+|second| is easy to define once 
+the |swap| arrow and |first| function are available
+\begin{code}
+second :: Arrow arrow => 
+          arrow a b -> arrow (c :*: a) (c :*: b)
+second f = swap >>> first f >>> swap
+\end{code}
+and since it is common, we also add the |&&&| operator,
+a share-parallel operator
+\begin{code}
+(&&&) :: Arrow arrow => arrow a b -> arrow a d
+            -> arrow a (b :*: d)
+f &&& g = share >>> (f *** g)
+\end{code}
+
+%if False
 Since we are not especially concerned with the functional
 correctness of the benchmarks
-we also allow the following ``optimization''
+we also allow the following ``optimizations''
 to reduce synchronization overheads, if necessary.
 \[
 \begin{array}{rcl}
@@ -113,28 +142,18 @@ to reduce synchronization overheads, if necessary.
 \end{array}
 \]
 
-|second| is easy to define once 
-the |swap| arrow and |first| function are available
 \begin{code}
-second :: IdxArrow arrow => 
-          arrow a b -> arrow (c :*: a) (c :*: b)
-second f = swap >>> first f >>> swap
-\end{code}
-%if False
-\begin{code}
-{-# NOINLINE (>>>) #-}
 infixr 3 ***
 infixr 3 &&&
 \end{code}
 %endif
 The previous definitions offer the base on which
 the benchmarking arrows will be constructed.
-New operations are present:
+Two operations are added to the base |Arrow|:
 \begin{itemize}
  \item |sink| -- an arrow which just ``uses'' the incoming 
-   data and produces a special value |End|.
+   data and produces a special type, |End|.
    The purpose is to denote the end of a computation.
- \item |reuse| -- allows data to be shared.
  \item |forget1| -- allows data to be forgotten.
    This should be used carefully, one should ensure that this
    data was previously used in something with a side-effect 
@@ -142,82 +161,35 @@ New operations are present:
    compiler or runtime.
    |sink| would be the safer alternative,
    as it produces a side-effect for the given input data.
- \item |time| -- runs a computation and times the execution.
 \end{itemize}
 
 \begin{code}
-class IdxArrow arrow => BenchArrow arrow where
-  reuse :: arrow a (a :*: a)
-  forget1 :: arrow (a :*: b) b
+class Arrow arrow => BenchArrow arrow where
+  forgetEnd :: arrow (End :*: b) b
   sink  :: arrow a End
-  time  :: arrow a b -> arrow a (b :*: DoubleIdx)
+  source :: arrow Start Start
 \end{code}
-An example of how the typeclasses above can be 
-used to create custom benchmarks can be seen in the
-type-class definition below:
+The purpose of this extension is to allow
+benchmarks to express when they have completed.
+It allows the arrows the note when some
+data has been finished
+(although there may be other references to the same data)
+through |sink|,
+and these finished pieces can be aggregated by using
+|mergeEnd|.
+These two operations produce the |End| type,
+which we use to signal the end of a benchmark.
 \begin{code}
-class BenchArrow arrow => CustomArrow arrow 
- where
-  type Matrix arrow :: *
-  genMatrix :: arrow a (Matrix arrow)
-  matMul :: 
-    arrow (Matrix arrow :*: Matrix arrow) (Matrix arrow)
-
-  type Lock arrow :: *
-  genLock :: arrow a (Lock arrow)
-  lock :: arrow (Lock arrow) (Lock arrow)
-  unlock :: arrow (Lock arrow) (Lock arrow)
+type a :*: b = (a,b)
+type a :+: b = Either a b
 \end{code}
-In this benchmark, there are two types of data
-|Lock|s, and |Matrix|s, with associated operations.
-A common pattern can be seen here,:
-a benchmark is a combination of a data-generator
-and some function which uses the generated data.
-In the example above, 
-there is no particular type that is required to 
-create a |Matrix| or a |Lock|,
-although they could take parameters.
-
-The |lock| and |unlock| operations perform the
-expected tasks, and should be used to guard computations.,
-Usage of these arrows can be seen below where
-|protect| constructs an arrow that 
-requires in addition to the normal argument a |Lock|.
 \begin{code}
-protect :: CustomArrow arrow =>
-           arrow a b ->
-           arrow (Lock arrow :*: a) (Lock arrow :*: b)
-protect f = first lock >>> second f >>> first unlock
-\end{code}
-|protect| can then be used to construct
-a benchmark that,
-given two benchmarks requiring the same type of input,
-will safely execute both in parallel.
-Notice the |Lock| type does not appear here
-as it was generated and forgotten within the function.
-\begin{code}
-safeShare :: CustomArrow arrow =>
-              arrow a b -> arrow a c -> arrow a (b :*: c)
-safeShare f g = 
-  reuse >>> first genLock >>> (protect' f &&& protect' g)
-  where
-    protect' h = protect h >>> forget1
-\end{code}
-Below we see an example of generating two matricies,
-multiplying them both in parallel,
-then multiplying those results again in parallel.
-This example makes it clear that these
-are not data-flow arrows, but type-flow arrows,
-as there is no distinction between the same
-data and the same \emph{type} of data,
-although sometimes they can coincide.
-\begin{code}
-doubleMul :: CustomArrow arrow => 
-             arrow a (Matrix arrow)
-doubleMul =
-  (genMatrix &&& genMatrix) >>> 
-  (matMul &&& matMul) >>> 
-  matMul
+data PreDef a = PreDef a
+data Zero = Zero
+data Succ a = Succ a
+data End
+data DoubleIdx
+data Start
 \end{code}
 
 %if False
@@ -227,6 +199,7 @@ data Eqq a b where
 
 data TType a where
     TTEnd  :: TType End
+    TTStart :: TType Start
     TTZero :: TType Zero
     TTDbl  :: TType DoubleIdx
     TTSucc :: TType a -> TType (Succ a)
@@ -252,6 +225,7 @@ instance Show (TType a) where
   show t =
     case t of
       TTEnd -> "endT"
+      TTStart -> "startT"
       TTZero -> "0T"
       TTDbl -> "dblT"
       TTSucc n -> show (toInt $ TTSucc n) ++ "T"
@@ -313,7 +287,7 @@ data TypedArrow arrow = forall a b . arrow a b ::: ArrowType a b
 
 arrows1 :: BenchArrow arrow => [TType a -> TypedArrow arrow]
 arrows1 = [ \ ty -> sink ::: ArrSinkType ty 
-          , \ ty -> idIdx ::: ArrIdType ty 
+          , \ ty -> id ::: ArrIdType ty 
           ]
 
 
@@ -415,7 +389,7 @@ arrowFilter startTy endTy arrs =
                Eqq <- testType endTy (getOutType ft)
                return f
 
-class IdxArrow arrow => IdxArrowAlt arrow where
+class Arrow arrow => ArrowAlt arrow where
     (+++) :: arrow a b -> arrow c d -> arrow (a :+: c) (b :+: d)
     (|||) :: arrow a b -> arrow c b -> arrow (a :+: c) b
 

@@ -4,19 +4,25 @@ module UBench where
 data UTProgram =
   UTProgram [UTDef] UTBench
 
-data UTDef = UTDef String String String deriving Eq
+data UTDef 
+    = UTDef String 
+            String -- (Either String String)
+            String -- (Either String String)
+            deriving Eq
 
-data UTBench where
-  UNoop    :: UTBench
-  UPar     :: UTBench -> UTBench -> UTBench
-  USeq     :: UTBench -> UTBench -> UTBench
-  USplit   :: UTBench -> UTBench -> UTBench
-  UFirst   :: UTBench -> UTBench
-  USwap    :: UTBench
-  UForget1 :: UTBench
-  UReuse   :: UTBench
+data UTBench 
+    = UNoop
+    | UPar UTBench UTBench  
+    | USeq UTBench UTBench
+    | USplit UTBench UTBench
+    | UFirst UTBench
+    | USwap    
 
-  USink    :: UTBench
-  UTimeIt  :: UTBench -> UTBench
+    | UShare   
 
-  UVar     :: String -> UTBench
+    | UForgetEnd
+    | USink
+    | USource
+
+    | UVar String
+      deriving (Show)

@@ -20,10 +20,14 @@ parseFlow = parse flowProgram "<from string>"
     flowProgram = UTProgram <$> (many flowDef <* symbol ";")
                             <*> flowExpr
 
+
+    typeOrStart = 
+        ((reserved "START" >> return (Left "START")) <|> (Right <$> identifier))
+
     flowDef :: Parser UTDef
     flowDef = UTDef <$> identifier
-                    <*> identifier
-                    <*> identifier
+                    <*> identifier -- typeOrStart
+                    <*> identifier -- typeOrStart
 
     flowExpr :: Parser UTBench
     flowExpr = e
@@ -31,8 +35,10 @@ parseFlow = parse flowProgram "<from string>"
         term = parens e
                <|> (UVar <$> identifier)
                <|> (reserved "id" >> return UNoop)
-               <|> (reserved "reuse" >> return UReuse)
-               <|> (reserved "forget1" >> return UForget1)
+               <|> (reserved "share" >> return UShare)
+               <|> (reserved "source" >> return USource)
+               <|> (reserved "sink" >> return USink)
+               <|> (reserved "forgetEnd" >> return UForgetEnd)
                <|> (reserved "swap" >> return USwap)
 
         secondF a = USwap `USeq` UFirst a `USeq` USwap
@@ -50,7 +56,9 @@ parseFlow = parse flowProgram "<from string>"
         e = buildExpressionParser table term
 
     dslDef = 
-      T.emptyDef { T.reservedNames = ["id", "swap", "first", "second", "reuse"
+      T.emptyDef { T.reservedNames = [ "START"
+                                     , "id", "swap", "first", "second"
+                                     , "source", "sink", "share", "forgetEnd"
                                      ,"forget1"]
                  , T.reservedOpNames = ["***", ">>>"]
                  }

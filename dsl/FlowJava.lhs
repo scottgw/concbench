@@ -14,40 +14,43 @@ module FlowJava where
 
 import Data.Char
 
-import            Control.Lens (makeLenses, view, over)
+import           Control.Category
+import           Control.Lens (makeLenses, view, over)
 
 import           Data.Set (Set)
 import qualified Data.Set as Set
 
+import           Prelude hiding (id, (.))
+
 import           System.Process
 
+import           CustomBench
 import           FlowBench
 import           Flow
 
 newtype Java a b = Java (TBench a b)
 
-instance IdxCategory Java where
-  Java f `compIdx` Java g = Java $ g >>> f
-  idIdx      = Java idIdx
+instance Category Java where
+  Java f . Java g = Java $ g >>> f
+  id              = Java id
 
-instance IdxArrow Java where
+instance Arrow Java where
   Java f *** Java g  = Java $ f *** g
-  Java f &&& Java g = Java $ f &&& g
+  share = Java share
   swap  = Java swap
   first (Java f) = Java $ first f
 
 instance BenchArrow Java where
-  forget1 = Java forget1
-  reuse = Java reuse
-  time (Java f) = Java $ time f
+  forgetEnd = Java forgetEnd
   sink = Java sink
 
-instance CustomArrow Java where
+instance LockArrow Java where
   type Lock Java   = PreDef Zero
   genLock          = Java $ Var "genLock" "Object"
   lock             = Java $ Var "lock" "Object"
   unlock           = Java $ Var "unlock" "Object"
 
+instance MatrixArrow Java where
   type Matrix Java = PreDef (Succ Zero)
   genMatrix = Java $ Var "genMatrix" "array[][]"
   matMul    = Java $ Var "matMul" "array[][]"
@@ -132,7 +135,6 @@ runTest str = do
          times <- runByteCode "Test"
          print times
 
-
 generateByteCode :: FilePath -> String -> IO ()
 generateByteCode path str = do
   let javaPath = path ++ ".java"
@@ -151,7 +153,6 @@ runByteCode path = do
     where
       cpOpt = ".:commons-math-2.2.jar"
 
-
 compileJava :: TypedArrow TBench -> TypeMap -> String
 compileJava (a ::: _) _typeMap =
   let (state, code , _outArg) = 
@@ -162,13 +163,7 @@ compileJava (a ::: _) _typeMap =
 compileToJava :: Java a b -> Arg a -> JavaState -> (JavaState, String, Arg b)
 compileToJava (Java texpr) inArg state =
   case texpr of
-    Var arr tOut ->
-      let varName = varFromType i tOut
-          outArg = ArgVar varName tOut
-          updState = addDecl (JavaDecl varName tOut) . incFresh
-      in  (updState state,
-           unwords [varName, "=", arr, "(", show inArg, ");"], 
-           outArg)
+    Var arrowName tOut -> lookupBinding state inArg arrowName tOut
     Seq f g -> (st2, unlines [code1, code2], outArg2)
       where          
         (st1, code1, outArg1) = go f inArg state
@@ -180,20 +175,17 @@ compileToJava (Java texpr) inArg state =
               (st2, code2, outArg2) = go g a2 st1
               tup = ArgTup ("tuple" ++ show (getFresh st2)) outArg1 outArg2
           in (st2, par code1 code2, tup)
-    Split f g ->
-      let (st1, code1, outArg1) = go f inArg state
-          (st2, code2, outArg2) = go g inArg st1
-          tup = ArgTup ("tuple" ++ show (getFresh st2)) outArg1 outArg2
-      in (st2, par code1 code2, tup)
     First f ->
       case inArg of 
         ArgTup name a1 a2 ->
           let (str, code, outArg) = go f a1 state
           in (str, code, ArgTup name outArg a2)
-    Forget1 ->
+    ForgetEnd ->
       case inArg of
         ArgTup _ _a1 a2 -> (state, "", a2)
-    Reuse ->
+    Source ->
+        (state, "", ArgVar "null" "Object")
+    Share ->
       (state, "", ArgTup (error "reuse: argtup") inArg inArg)
     Swap ->
       case inArg of
@@ -239,16 +231,48 @@ compileToJava (Java texpr) inArg state =
                       , "thread" ++ show futNum ++ ".start();"
                       ]
 
+type VarLookup a b = JavaState -> Arg a -> String -> String -> (JavaState, String, Arg b)
+
+lookupBinding :: VarLookup a b
+lookupBinding state inArg arrowName outTypeName = 
+    case arrowName of
+      "lock" -> lockArrow state inArg arrowName outTypeName
+      "unlock" -> unlockArrow state inArg arrowName outTypeName
+      _      -> varArrow state inArg arrowName outTypeName
+
+varArrow :: JavaState -> Arg a -> String -> String -> (JavaState, String, Arg b)
+varArrow state inArg arrowName outTypeName =
+    let varName = varFromType (view javaFresh state) outTypeName
+        outArg = ArgVar varName outTypeName
+        updState = addDecl (JavaDecl varName outTypeName) . incFresh
+    in (updState state,
+        unwords [varName, "=", arrowName, "(", show inArg, ");"], 
+        outArg)
+
+lockArrow :: VarLookup a b
+lockArrow state inArg arrowName outTypeName =
+    case inArg of
+      ArgVar n t -> (state, unwords ["synchronized(", show inArg, "){"], ArgVar n t)
+      _ -> error "lockArrow:"
+unlockArrow :: VarLookup a b
+unlockArrow state inArg arrowName outTypeName =
+    case inArg of
+      ArgVar n t -> (state, "}", ArgVar n t)
+      _ -> error "unlockArrow:"
+
 wrapJavaBench :: Set JavaDecl -> String -> String
 wrapJavaBench decls block = 
     unlines (["import java.util.concurrent.*;"
              ,"import java.util.*;"
              ,"class Test {"
              ,"   static int fib (Object o) {"
-             ,"     return fibR(32);"
+             ,"     return fibR(35);"
              ,"   }"
              ,"   static int fibR (int i) {"
              ,"     return (i <= 1) ? 1 : fibR (i-1) + fibR(i-2);"
+             ,"   }"
+             ,"   static Object genLock (Object a) {"
+             ,"     return new Object();"
              ,"   }"
              ] ++ [declsToJava decls] ++ -- Set.toList methods ++ 
              ["  public static void main (String[] args) {"

@@ -20,6 +20,9 @@ bench.pdf: bench.tex
 flow.tex: Flow.lhs
 	lhs2TeX -o $@ $<
 
+custom_bench.tex: CustomBench.lhs
+	lhs2TeX -o $@ $<
+
 main.tex: Main.lhs
 	lhs2TeX -o $@ $<
 

@@ -22,6 +22,8 @@ module FlowBench ( parseAndTypeCheck
                  , ArrowMap
                  ) where
 
+import           Control.Category
+
 import           Data.List
 import           Data.Map (Map)
 import qualified Data.Map as Map
@@ -42,16 +44,15 @@ parseAndTypeCheck str =
       let typeMap = defsToTypeMap defs
           arrMap = defsToArrowMap defs typeMap
       in case typeCheck typeMap arrMap uexpr of
-        Just e -> Right (e, typeMap, arrMap)
-        Nothing -> Left "failed to typecheck"
-
+        Right e -> Right (e, typeMap, arrMap)
+        Left str -> Left str
 
 type TypeMap  = Map String TTypeEx
-type ArrowMap = Map String (String, ArrowTypeEx, String)
+type ArrowMap = Map String (Maybe String, ArrowTypeEx, Maybe String)
 
 data TypedBench n =
   forall m . TBench n m ::^ ArrowType n m
-  
+
 instance Show (TypedBench n) where
   show (b ::^ t) = concat [show b, " :: ", show t]
 
@@ -73,7 +74,7 @@ lookupTypeName var typeMap =
 
 data ArrowTypeEx = forall n m . ArrowTypeEx (ArrowType n m)     
 
-typeCheck :: TypeMap -> ArrowMap -> UTBench -> Maybe (TypedArrow TBench)
+typeCheck :: TypeMap -> ArrowMap -> UTBench -> Either String (TypedArrow TBench)
 typeCheck typeMap arrMap expr =
   do TTypeEx t <- checkInType typeMap arrMap expr
      b ::^ t' <- typeCheck' typeMap arrMap t expr
@@ -84,7 +85,7 @@ defsToTypeMap ds = snd $ foldl go (TTypeEx TTZero, Map.empty) typeNames
   where
     typeName2 (UTDef _ t1 t2) = [t1, t2]
     
-    typeNames :: [String]
+    typeNames :: [String] -- Either String String]
     typeNames = nub $ concatMap typeName2 ds
     
     go :: (TTypeEx, TypeMap) -> String -> (TTypeEx, TypeMap)
@@ -96,12 +97,32 @@ defsToArrowMap :: [UTDef] -> TypeMap -> ArrowMap
 defsToArrowMap defs typeMap = foldl go Map.empty defs
   where
     go arrMap (UTDef arrName inTypeStr outTypeStr) =
-      case (Map.lookup inTypeStr typeMap, Map.lookup outTypeStr typeMap) of
-        (Just (TTypeEx tIn), Just (TTypeEx tOut)) ->
-          Map.insert arrName (inTypeStr, ArrowTypeEx (ArrCustom tIn tOut), outTypeStr) arrMap
-        _ -> error "defsToArrowMap: missing one of the types in the typeMap"
+        case (t1ex, t2ex) of
+          (TTypeEx t1, TTypeEx t2) ->
+              Map.insert arrName ( justify inTypeStr
+                                 , ArrowTypeEx (ArrCustom t1 t2)
+                                 , justify outTypeStr) arrMap
+      where
+        justify "x" = Nothing
+        justify str = Just str
 
-checkInType :: TypeMap -> ArrowMap -> UTBench -> Maybe TTypeEx
+        tmapLookup s =
+            case Map.lookup s typeMap of
+              Just t -> t
+              _ -> error "defsToArrowMap: missing one of the types in the typeMap"
+        t1ex = tmapLookup inTypeStr
+        t2ex = tmapLookup outTypeStr
+      -- case (Map.lookup inTypeStr typeMap, Map.lookup outTypeStr typeMap) of
+      --   (Just (TTypeEx tIn), Just (TTypeEx tOut)) ->
+      --     Map.insert arrName (inTypeStr, ArrowTypeEx (ArrCustom tIn tOut), outTypeStr) arrMap
+      --   _ -> error "defsToArrowMap: missing one of the types in the typeMap"
+
+testTypeEi t1 t2 =
+    case testType t1 t2 of
+      Just e -> Right e
+      Nothing -> Left $ "types not equal: " ++ show t1 ++ "," ++ show t2
+
+checkInType :: TypeMap -> ArrowMap -> UTBench -> Either String TTypeEx
 checkInType typeMap arrMap expr =
   case expr of
     USeq b1 _b2 -> go b1
@@ -112,20 +133,25 @@ checkInType typeMap arrMap expr =
     USplit b1 b2 ->
       do TTypeEx t1 <- go b1
          TTypeEx t2 <- go b2
-         Eqq <- testType t1 t2
+         Eqq <- testTypeEi t1 t2
          return (TTypeEx t1)
-    UTimeIt b -> go b
+    USource -> return (TTypeEx TTStart)
     UVar s ->
-      do (_, ArrowTypeEx arrT, _) <- Map.lookup s arrMap
+      do (_, ArrowTypeEx arrT, _) <- lookupEi s arrMap
          return (TTypeEx $ getInType arrT)
-    _ -> Nothing
+    _ -> Left $ "Cannot checkInType for " ++ show expr
   where
     go = checkInType typeMap arrMap
 
-typeCheck' :: TypeMap -> ArrowMap -> TType n -> UTBench -> Maybe (TypedBench n)
+lookupEi s mp = 
+    case Map.lookup s mp of
+      Just i -> return i
+      Nothing -> Left ("Not found in map: " ++ show s)
+
+typeCheck' :: TypeMap -> ArrowMap -> TType n -> UTBench -> Either String (TypedBench n)
 typeCheck' typeMap arrMap tIn expr =
   case expr of
-    UNoop -> return (idIdx ::^ ArrIdType tIn)
+    UNoop -> return (id ::^ ArrIdType tIn)
     USeq b1 b2 -> 
       do b1' ::^ b1Type <- go tIn b1
          b2' ::^ b2Type <- go (getOutType b1Type) b2
@@ -136,7 +162,7 @@ typeCheck' typeMap arrMap tIn expr =
           do b1' ::^ b1Type <- go tIn1 b1
              b2' ::^ b2Type <- go tIn2 b2
              return ((b1' *** b2') ::^ ArrParType b1Type b2Type)
-        _ -> Nothing
+        _ -> Left "UPar didn't receive a pair"
     USplit b1 b2 ->
       do b1' ::^ b1Type <- go tIn b1
          b2' ::^ b2Type <- go tIn b2
@@ -146,27 +172,32 @@ typeCheck' typeMap arrMap tIn expr =
         TTPair tIn1 tIn2 ->
           do b' ::^ bType <- go tIn1 b
              return ((first b') ::^ ArrFirstType bType tIn2)
-        _ -> Nothing
+        _ -> Left "UFirst didn't receive a pair"
     USwap ->
       case tIn of
         TTPair tIn1 tIn2 -> return (swap ::^ ArrSwapType tIn1 tIn2)
-        _ -> Nothing
+        _ -> Left "USwap didn't receive a pair"
     USink -> return (sink ::^ ArrSinkType tIn)
-    UTimeIt b ->
-      do b' ::^ bType <- go tIn b
-         return (time b' ::^ ArrCustom tIn (TTPair (getOutType bType) TTDbl))
-    UForget1 ->
+    UForgetEnd ->
       case tIn of
-        TTPair _tIn1 tIn2 -> return (forget1 ::^ ArrCustom tIn tIn2)
-        _ -> Nothing
-    UReuse -> return (reuse ::^ ArrCustom tIn (TTPair tIn tIn))
+        TTPair TTEnd tIn2 -> return (forgetEnd ::^ ArrCustom tIn tIn2)
+        _ -> Left "UForgetEnd didn't receive a pair of the form: (End, a)"
+    UShare -> return (share ::^ ArrCustom tIn (TTPair tIn tIn))
+    USource -> 
+      case tIn of
+        TTStart -> return (source ::^ ArrCustom TTStart TTStart)
+        _ -> Left "source must have start input"
     UVar s ->
-      do (_inTypeStr, ArrowTypeEx arrT, outTypeStr) <- Map.lookup s arrMap
-         Eqq <- testType tIn (getInType arrT)
-         let tOut    = getOutType arrT
-         return (Var s outTypeStr ::^ ArrCustom tIn tOut)
+      do (inTypeStr, ArrowTypeEx arrT, Just outTypeStr) <- lookupEi s arrMap
+         case inTypeStr of
+           Nothing -> return (Var s outTypeStr ::^ ArrCustom tIn (getOutType arrT))
+           Just _ ->
+             do Eqq <- testTypeEi tIn (getInType arrT)
+                let tOut    = getOutType arrT
+                return (Var s outTypeStr ::^ ArrCustom tIn tOut)
+    e -> error (show e)
   where
-    go :: TType n -> UTBench -> Maybe (TypedBench n)
+    go :: TType n -> UTBench -> Either String (TypedBench n)
     go = typeCheck' typeMap arrMap
 
 data TBench a b where
@@ -174,28 +205,26 @@ data TBench a b where
   Noop    :: TBench a a
   Par     :: TBench a b -> TBench c d -> TBench (a :*: c) (b :*: d)
   Seq     :: TBench a b -> TBench b c -> TBench a c
-  Split   :: TBench a b -> TBench a d -> TBench a (b :*: d)
   First   :: TBench a b -> TBench (a :*: c) (b :*: c)
   Swap    :: TBench (a :*: c) (c :*: a)
-  Forget1 :: TBench (a :*: c) c
-  Reuse   :: TBench a (a :*: a)
+  Share   :: TBench a (a :*: a)
 
+  Source  :: TBench Start Start
   Sink    :: TBench a End
-  TimeIt  :: TBench a b -> TBench a (b :*: DoubleIdx)
+  ForgetEnd :: TBench (End :*: c) c
 
 instance Show (TBench n m) where
     show (Var s _) = s
     show Noop = "id"
     show (Par a b) = concat ["(",show a,") *** (", show b, ")"]
     show (Seq a b) = concat ["(",show a,") >>> (", show b, ")"]
-    show (Split a b) = concat ["(",show a,") &&& (", show b, ")"]
     show (First a) = concat ["first (", show a, ")"]
     show Swap = "swap"
-    show Reuse = "reuse"
-    show Forget1 = "forget1"
+    show Share = "share"
 
+    show Source = "source"
+    show ForgetEnd = "forgetEnd"
     show Sink = "sink"
-    show (TimeIt b) = "time (" ++ show b ++ ")"
 
 instance Show (TypedArrow TBench) where
     show (arr ::: ty) = concat [show arr, " :: ", show ty]
@@ -203,19 +232,18 @@ instance Show (TypedArrow TBench) where
 instance Show (TypedArrow1 TBench a) where
     show (arr ::! _ty) = show arr
 
-instance IdxCategory TBench where
-  idIdx   = Noop
-  compIdx = flip Seq
+instance Category TBench where
+    (.) = flip Seq
+    id  = Noop
 
-instance IdxArrow TBench where
+instance Arrow TBench where
   (***) = Par
-  (&&&) = Split
+  share = Share
   first = First
   swap  = Swap
 
 instance BenchArrow TBench where
-  forget1 = Forget1
-  reuse = Reuse
+  forgetEnd = ForgetEnd
   sink  = Sink
-  time = TimeIt
+  source = Source
 \end{code}
