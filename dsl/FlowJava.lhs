@@ -17,6 +17,7 @@ import Data.Char
 import           Control.Category
 import           Control.Lens (makeLenses, view, over)
 
+import qualified Data.Map as Map
 import           Data.Set (Set)
 import qualified Data.Set as Set
 
@@ -135,6 +136,13 @@ runTest str = do
          times <- runByteCode "Test"
          print times
 
+runJavaBench :: Java Start End -> TypeMap -> IO ()
+runJavaBench (Java b) typeMap =
+  do let str = compileJava (b ::: ArrCustom TTStart TTEnd) typeMap
+     generateByteCode "Test" str
+     times <- runByteCode "Test"
+     print times
+
 generateByteCode :: FilePath -> String -> IO ()
 generateByteCode path str = do
   let javaPath = path ++ ".java"
@@ -164,6 +172,7 @@ compileToJava :: Java a b -> Arg a -> JavaState -> (JavaState, String, Arg b)
 compileToJava (Java texpr) inArg state =
   case texpr of
     Var arrowName tOut -> lookupBinding state inArg arrowName tOut
+    Extend arrowName t tOut -> lookupBinding state inArg arrowName tOut
     Seq f g -> (st2, unlines [code1, code2], outArg2)
       where          
         (st1, code1, outArg1) = go f inArg state
@@ -185,6 +194,8 @@ compileToJava (Java texpr) inArg state =
         ArgTup _ _a1 a2 -> (state, "", a2)
     Source ->
         (state, "", ArgVar "null" "Object")
+    Sink ->
+      (state, "", ArgVar "null" "Object")
     Share ->
       (state, "", ArgTup (error "reuse: argtup") inArg inArg)
     Swap ->
@@ -192,6 +203,7 @@ compileToJava (Java texpr) inArg state =
         ArgTup name a1 a2 ->
           (state, "", ArgTup name a2 a1)
     Noop -> (state, "", inArg)
+    e -> error (show e)
   where
     i = getFresh state
 
@@ -238,6 +250,8 @@ lookupBinding state inArg arrowName outTypeName =
     case arrowName of
       "lock" -> lockArrow state inArg arrowName outTypeName
       "unlock" -> unlockArrow state inArg arrowName outTypeName
+      "clqOffer" -> dotVarObject "offer" state inArg arrowName outTypeName
+      "clqPeek" -> dotVarObject "peek" state inArg arrowName outTypeName
       _      -> varArrow state inArg arrowName outTypeName
 
 varArrow :: JavaState -> Arg a -> String -> String -> (JavaState, String, Arg b)
@@ -246,9 +260,22 @@ varArrow state inArg arrowName outTypeName =
         outArg = ArgVar varName outTypeName
         updState = addDecl (JavaDecl varName outTypeName) . incFresh
     in (updState state,
-        unwords [varName, "=", arrowName, "(", show inArg, ");"], 
+        unwords [varName, " = ", arrowName, "(", show inArg, ");"], 
         outArg)
 
+dotVarObject :: String -> VarLookup a b
+dotVarObject name state inArg arrowName outTypeName =
+  let varName = varFromType (view javaFresh state) outTypeName
+      outArg = ArgVar varName outTypeName
+      updState = addDecl (JavaDecl varName outTypeName) . incFresh
+      ivar = "i" ++ show (view javaFresh state)
+  in (updState state,
+      unlines [ "for (int " ++ ivar ++ "; " ++ ivar ++ " < 10000; " ++ ivar ++ "++){"
+              , concat[varName, "=", show inArg, ".", name, "(new Object());"]
+              , "}"
+              ],
+      outArg)
+     
 lockArrow :: VarLookup a b
 lockArrow state inArg arrowName outTypeName =
     case inArg of

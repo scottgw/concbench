@@ -20,6 +20,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PolyKinds #-}
 {-# LANGUAGE DataKinds #-}
+
+{-# LANGUAGE ImpredicativeTypes #-}
 module Flow where
 
 import           Control.Category
@@ -198,6 +200,8 @@ data Eqq a b where
     Eqq :: Eqq a a
 
 data TType a where
+    TTAny :: (forall a . TType a)
+    TTWitness :: String -> a -> TType a
     TTEnd  :: TType End
     TTStart :: TType Start
     TTZero :: TType Zero
@@ -224,6 +228,7 @@ toInt i =
 instance Show (TType a) where
   show t =
     case t of
+      TTWitness name _ -> name
       TTEnd -> "endT"
       TTStart -> "startT"
       TTZero -> "0T"
@@ -270,6 +275,7 @@ getInType (ArrSeqType a _b) = getInType a
 
 testType :: TType n -> TType m -> Maybe (Eqq n m)
 testType TTEnd TTEnd           = Just Eqq
+testType TTStart TTStart       = Just Eqq
 testType TTZero TTZero         = Just Eqq
 testType (TTSucc t) (TTSucc s) = do
   Eqq <- testType t s
@@ -285,11 +291,6 @@ testInner f g = testType (getOutType f) (getInType g)
 
 data TypedArrow arrow = forall a b . arrow a b ::: ArrowType a b
 
-arrows1 :: BenchArrow arrow => [TType a -> TypedArrow arrow]
-arrows1 = [ \ ty -> sink ::: ArrSinkType ty 
-          , \ ty -> id ::: ArrIdType ty 
-          ]
-
 
 data ArrowSel =
   ArrowSelPar | ArrowSelSeq | ArrowSelSplit
@@ -297,12 +298,14 @@ data ArrowSel =
 
 genBStartEnd :: forall arrow a b . (BenchArrow arrow)
         => [TypedArrow arrow]
+        -> (forall c . [TType c  -> TypedArrow arrow])
         -> TType a
         -> TType b
         -> Int
         -> Gen (arrow a b)
-genBStartEnd arrows startTy endTy size | size <= 1 = Test.elements (arrowFilter startTy endTy arrows)
-genBStartEnd arrows startTy endTy size  = 
+genBStartEnd arrows arrows1 startTy endTy size | size <= 1 = 
+  Test.elements (arrowFilter startTy endTy arrows arrows1)
+genBStartEnd arrows arrows1 startTy endTy size  = 
     do sel <- Test.arbitraryBoundedEnum
        case sel of
          ArrowSelPar ->
@@ -310,33 +313,35 @@ genBStartEnd arrows startTy endTy size  =
                (TTPair s1 s2, TTPair e1 e2) ->
                    do i <- Test.choose (1, size - 1)
                       let i' = size - i
-                      f <- genBStartEnd arrows s1 e1 i
-                      g <- genBStartEnd arrows s2 e2 i'
+                      f <- genBStartEnd arrows arrows1 s1 e1 i
+                      g <- genBStartEnd arrows arrows1 s2 e2 i'
                       return (f *** g)
-               _ -> genBStartEnd arrows startTy endTy size
+               _ -> genBStartEnd arrows arrows1 startTy endTy size
          ArrowSelSeq ->
              do i <- Test.choose (1, size - 1)
                 let i' = size - i
-                f ::! ft <- genBStart    arrows startTy               i
-                g        <- genBStartEnd arrows (getOutType ft) endTy i'
+                f ::! ft <- genBStart    arrows arrows1 startTy               i
+                g        <- genBStartEnd arrows arrows1  (getOutType ft) endTy i'
                 return (f >>> g)
          ArrowSelSplit ->
              case endTy of
                TTPair e1 e2 ->
                    do i <- Test.choose (1, size - 1)
                       let i' = size - i
-                      f <- genBStartEnd arrows startTy e1 i
-                      g <- genBStartEnd arrows startTy e2 i'
+                      f <- genBStartEnd arrows arrows1 startTy e1 i
+                      g <- genBStartEnd arrows arrows1 startTy e2 i'
                       return (f &&& g)
-               _ -> genBStartEnd arrows startTy endTy size
+               _ -> genBStartEnd arrows arrows1 startTy endTy size
 
 genBStart :: forall arrow a . (BenchArrow arrow)
         => [TypedArrow arrow]
+        -> (forall c . [TType c -> TypedArrow arrow])
         -> TType a
         -> Int
         -> Gen (TypedArrow1 arrow a)
-genBStart arrows ty size | size <= 1 = Test.elements (startArrows ty arrows)
-genBStart arrows ty size  = 
+genBStart arrows arrs1 ty size | size <= 1 = 
+  Test.elements (startArrows ty arrows arrs1)
+genBStart arrows arrs1 ty size  = 
     do sel <- Test.arbitraryBoundedEnum
        case sel of
          ArrowSelPar ->
@@ -344,21 +349,21 @@ genBStart arrows ty size  =
                TTPair t1 t2 ->
                    do i <- Test.choose (1, size - 1)
                       let i' = size - i
-                      f ::! ft <- genBStart arrows t1 i
-                      g ::! gt <- genBStart arrows t2 i'
+                      f ::! ft <- genBStart arrows arrs1 t1 i
+                      g ::! gt <- genBStart arrows arrs1 t2 i'
                       return ((f *** g) ::! ArrParType ft gt)
-               _ -> genBStart arrows ty size
+               _ -> genBStart arrows arrs1 ty size
          ArrowSelSeq ->
              do i <- Test.choose (1, size - 1)
                 let i' = size - i
-                f ::! ft <- genBStart arrows ty              i
-                g ::! gt <- genBStart arrows (getOutType ft) i'
+                f ::! ft <- genBStart arrows arrs1 ty              i
+                g ::! gt <- genBStart arrows arrs1 (getOutType ft) i'
                 return ((f >>> g) ::! ArrSeqType ft gt)
          ArrowSelSplit ->
              do i <- Test.choose (1, size - 1)
                 let i' = size - i
-                f ::! ft <- genBStart arrows ty i
-                g ::! gt <- genBStart arrows ty i'
+                f ::! ft <- genBStart arrows arrs1 ty i
+                g ::! gt <- genBStart arrows arrs1 ty i'
                 return ((f &&& g) ::! ArrSplitType ft gt)
 
 
@@ -367,20 +372,25 @@ data TypedArrow1 arrow a = forall b . arrow a b ::! ArrowType a b
 startArrows :: forall arrow a . BenchArrow arrow
                => TType a
                -> [TypedArrow arrow]
+               -> [TType a -> TypedArrow arrow]
                -> [TypedArrow1 arrow a]
-startArrows ty arrs = catMaybes (map pr (arrs ++ map ($ ty) arrows1))
+startArrows ty arrs arrs1 = catMaybes (map pr (arrs ++ map ($ ty) arrs1))
     where
         pr :: TypedArrow arrow -> Maybe (TypedArrow1 arrow a)
-        pr (f ::: ft) = 
-            do Eqq <- testType ty (getInType ft)
-               return (f ::! ft)
+        pr (f ::: ft) =
+          case getInType ft of
+            -- TTAny -> return (f ::! ArrCustom ty (getOutType ft))
+            inTy ->
+              do Eqq <- testType ty inTy
+                 return (f ::! ft)
 
 arrowFilter :: forall arrow a b . BenchArrow arrow
                => TType a
                -> TType b
                -> [TypedArrow arrow]
+               -> (forall c . [TType c -> TypedArrow arrow])
                -> [arrow a b]
-arrowFilter startTy endTy arrs = 
+arrowFilter startTy endTy arrs arrows1 = 
     catMaybes (map pr (arrs ++ map ($ startTy) arrows1))
     where
         pr :: TypedArrow arrow -> Maybe (arrow a b)
