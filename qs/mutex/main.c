@@ -109,31 +109,9 @@ main(int argc, char **argv)
   num_iters = atoi(argv[1]);
   num_each  = atoi(argv[2]);
   sync_data_t sync_data = sync_data_new(MAX_TASKS);
-  processor_t proc = make_processor(sync_data);
+  processor_t proc = make_root_processor(sync_data, proc_main);
 
   create_executors(sync_data, 4);
-
-  priv_queue_t q = priv_queue_new(proc);
-
-  void ***args;
-  clos_type_t *arg_types;
-
-  closure_t clos =
-    closure_new(proc_main,
-                closure_void_type(),
-                1,
-                &args,
-                &arg_types);
-
-  arg_types[0] = closure_pointer_type();
-  *args[0] = proc;
-
-  priv_queue_lock(q, proc, proc);
-  priv_queue_routine(q, clos, proc);
-  priv_queue_unlock(q, proc);
-
-  printf("main shutdown\n");
-  proc_shutdown(proc, proc);
 
   {
     notifier_t notifier = notifier_spawn(sync_data);
@@ -141,8 +119,6 @@ main(int argc, char **argv)
   }
 
   join_executors();
-  priv_queue_free(q);
-
 
   printf ("x is: %d\n", x);
   sync_data_free(sync_data);
