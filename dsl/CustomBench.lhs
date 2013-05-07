@@ -90,7 +90,7 @@ and operations in a similar way.
 \begin{code}
 class LockArrow arrow where
   type Lock arrow :: *
-  genLock :: arrow a (Lock arrow)
+  genLock :: arrow Start (Lock arrow)
   lock :: arrow (Lock arrow) (Lock arrow)
   unlock :: arrow (Lock arrow) (Lock arrow)
 \end{code}
@@ -99,26 +99,26 @@ expected tasks, and should be used to guard computations.,
 Usage of these arrows can be seen below where
 |protect| constructs an arrow that 
 requires, in addition to the normal argument, a |Lock|.
-\begin{code}
+begin{code}
 protect :: (Arrow arrow, LockArrow arrow) =>
            arrow a b ->
            arrow (Lock arrow :*: a) (Lock arrow :*: b)
 protect f = first lock >>> second f >>> first unlock
-\end{code}
+end{code}
 |protect| can then be used to construct
 a benchmark that,
 given two benchmarks requiring the same type of input,
 will safely execute both in parallel.
 Notice the |Lock| type does not appear here
 as it was generated and forgotten within the function.
-\begin{code}
+begin{code}
 safeShare :: (BenchArrow arrow, LockArrow arrow) =>
               arrow a b -> arrow a c -> arrow a (b :*: c)
 safeShare f g = 
   share >>> first genLock >>> (protect' f &&& protect' g)
  where
    protect' h = protect h >>> first sink >>> forgetEnd
-\end{code}
+end{code}
 
 % Since the embedding is well-typed, we need a way
 % to transmit arbitrary types from the target language

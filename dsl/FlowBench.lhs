@@ -15,6 +15,7 @@
 module FlowBench ( parseAndTypeCheck
                  , lookupTypeName
 --                 , TypeIdx (..)
+                 , TTypeEx(..)
                  , TBench(..)
                  , TType(..)
                  , TypedArrow(..)
@@ -212,6 +213,8 @@ data TBench a b where
   Source  :: TBench Start Start
   Sink    :: TBench a End
   ForgetEnd :: TBench (End :*: c) c
+  
+  Extend  :: String -> ArrowType a b -> String -> TBench a b
 
 instance Show (TBench n m) where
     show (Var s _) = s
@@ -226,6 +229,7 @@ instance Show (TBench n m) where
     show ForgetEnd = "forgetEnd"
     show Sink = "sink"
 
+    show (Extend name _ _) = name
 instance Show (TypedArrow TBench) where
     show (arr ::: ty) = concat [show arr, " :: ", show ty]
 
