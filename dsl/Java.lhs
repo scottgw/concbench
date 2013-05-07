@@ -117,7 +117,7 @@ wrapJavaBench (JavaSrcPart methods decls setup block) =
 
              ,"    Vector<Double> stats = new Vector<Double>();"
              ,"    final int innerSize = 512;"
-             ,"    final int outerSize = 128*innerSize;"
+             ,"    final int outerSize = 64*innerSize;"
              ,unlines (Set.toList decls)
              ,"    final Object lk1 = new Object();"
              ,"    final Object lk2 = new Object();"
@@ -130,7 +130,7 @@ wrapJavaBench (JavaSrcPart methods decls setup block) =
              ,unlines (Set.toList setup)
              ,"      " ++ block
              ,"    }"
-             ,"    for (int i = 0; i < 50; i++) {"
+             ,"    for (int i = 0; i < 100; i++) {"
              ,"      for (int j = 0; j < outerSize; j++) {"
              ,"        memArray[j] = new int[innerSize];"
              ,"      }"
@@ -182,21 +182,22 @@ dslToASTWith this dsl =
         DslVar -> error "dslToASTWith: should not find DslVar"
         DslFib -> singleJavaPart fibDef "fib(37);"
         DslSleep -> emptyJavaPart $
-                    unlines ["for (int sleepi = 0; sleepi < 25; sleepi++){"
+                    unlines ["for (int sleepi = 0; sleepi < 10; sleepi++){"
                             ,"  try {"
-                            ,"    Thread.sleep(0,10000);"
+                            ,"    Thread.sleep(0,1000);"
                             ,"  } catch (Exception e) {"
                             ,"    e.printStackTrace();"
                             ,"  }"
                             ,"}"
                             ]
         DslCache -> 
-            let code = unlines [ "for (int cacheI = 0; cacheI < outerSize; cacheI++) {"
-                               , "  for (int cacheJ = 0; cacheJ < innerSize; cacheJ++) {"
-                               , "    memArray[cacheI][cacheJ] = memArray[cacheI][cacheJ] * 2 + 1;"
-                               , "  }"
-                               , "}"
-                               ]
+            let code = 
+                    unlines [ "for (int cacheI = 0; cacheI < outerSize; cacheI++) {"
+                            , "  for (int cacheJ = 0; cacheJ < innerSize; cacheJ++) {"
+                            , "    memArray[cacheI][cacheJ] = memArray[cacheI][cacheJ] * 2 + 1;"
+                            , "  }"
+                            , "}"
+                            ]
             in emptyJavaPart code
         DslLock1 b ->
             let part = dslToAST b

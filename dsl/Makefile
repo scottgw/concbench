@@ -34,3 +34,11 @@ minidoc.pdf: minidoc.tex flow.tex mylhs.sty
 
 clean:
 	@rm -f *.class *.hi *.o bench main.tex bench.pdf *.java
+
+
+linegraph:
+	./process_csv queue-basic.json.out.csv
+	./process_csv queue-cache.json.out.csv
+	./process_csv queue-sleep.json.out.csv
+	./linegraph.r queue-basic.json.out.csv.par queue-cache.json.out.csv.par queue-sleep.json.out.csv.par
+
