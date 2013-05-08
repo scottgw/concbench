@@ -57,6 +57,7 @@ worker(processor_t proc, processor_t shared)
     }
 
   priv_queue_shutdown(q, shared, proc);
+  printf("worker pre shutdown\n");
   proc_shutdown(proc, proc);
 
   printf("worker shutdown\n");

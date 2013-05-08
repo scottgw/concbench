@@ -38,7 +38,7 @@ get_value(processor_t proc)
 
 void worker(processor_t proc, processor_t shared, int flag) 
 {
-  fprintf(stderr, "worker with %d\n", flag);
+  fprintf(stderr, "%p worker with %d\n", proc, flag);
   void ***args;
   clos_type_t *arg_types;
   priv_queue_t q = priv_queue_new(shared);
@@ -95,6 +95,7 @@ void worker(processor_t proc, processor_t shared, int flag)
     }
 
   priv_queue_shutdown(q, shared, proc);
+  printf("worker pre shutdown\n");
   proc_shutdown(proc, proc);
 
   printf("worker shutdown\n");
