@@ -34,9 +34,15 @@ public:
 
     for (int i = 0; i < max_iters; i++) {
       
+      std::function<int(int **)> get = [=](int **arr) {
+          return (*arr)[i];
+      };
+
       // log the call.
-      m_private_queue.log_call ([=](int *arr[]) {
-          (*arr)[i]++;
+      int v = m_private_queue.log_call_with_result (get);
+
+      m_private_queue.log_call([=](int **arr) {
+          (*arr)[i] = v + 1;
         });
     }
     
