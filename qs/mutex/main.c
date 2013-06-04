@@ -36,7 +36,7 @@ worker(processor_t proc, processor_t shared)
 {
   void ***args;
   clos_type_t *arg_types;
-  priv_queue_t q = priv_queue_new(shared);
+  priv_queue_t q = proc_get_queue(proc, shared);
 
   for (int i = 0; i < num_iters; i++)
     { 
@@ -51,12 +51,11 @@ worker(processor_t proc, processor_t shared)
       
       *args[0] = shared;
 
-      priv_queue_lock(q, shared, proc);
+      priv_queue_lock(q, proc);
       priv_queue_routine(q, clos, proc);
       priv_queue_unlock(q, proc);
     }
 
-  priv_queue_shutdown(q, shared, proc);
   printf("worker pre shutdown\n");
   proc_shutdown(proc, proc);
 
@@ -72,13 +71,13 @@ void
 proc_main(processor_t proc)
 {
   printf("mutex main\n");
-  processor_t shared = make_processor(proc->task->sync_data);
+  processor_t shared = proc_new(proc->task->sync_data);
   
   for (int i = 0; i < num_each; i++)
     {
       printf("creating worker %d\n", i);
-      processor_t worker_proc = make_processor(proc->task->sync_data);
-      priv_queue_t q = priv_queue_new(worker_proc);
+      processor_t worker_proc = proc_new(proc->task->sync_data);
+      priv_queue_t q = proc_get_queue(proc, worker_proc);
       
       void ***args;
       clos_type_t *arg_types;
@@ -96,12 +95,12 @@ proc_main(processor_t proc)
       *args[0] = worker_proc;
       *args[1] = shared;
 
-      priv_queue_lock(q, worker_proc, proc);
+      priv_queue_lock(q, proc);
       priv_queue_routine(q, clos, proc);
       priv_queue_unlock(q, proc);
-
-      priv_queue_shutdown(q, worker_proc, proc);
     }
+
+  proc_deref_priv_queues(proc);
 }
 
 int
@@ -110,7 +109,7 @@ main(int argc, char **argv)
   num_iters = atoi(argv[1]);
   num_each  = atoi(argv[2]);
   sync_data_t sync_data = sync_data_new(MAX_TASKS);
-  processor_t proc = make_root_processor(sync_data, proc_main);
+  processor_t proc = proc_new_root(sync_data, proc_main);
 
   create_executors(sync_data, 4);
 
