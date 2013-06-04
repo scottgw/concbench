@@ -18,6 +18,8 @@
 
 #define MAX_TASKS 20000
 
+extern int num_dequeue;
+
 int num_each;
 int num_iters;
 
@@ -36,10 +38,11 @@ worker(processor_t proc, processor_t shared)
 {
   void ***args;
   clos_type_t *arg_types;
-  priv_queue_t q = proc_get_queue(proc, shared);
-
+  priv_queue_t q = NULL;
   for (int i = 0; i < num_iters; i++)
     { 
+      q = proc_get_queue(proc, shared);
+
       closure_t clos =
         closure_new(action,
                     closure_void_type(),
@@ -56,13 +59,12 @@ worker(processor_t proc, processor_t shared)
       priv_queue_unlock(q, proc);
     }
 
-  printf("worker pre shutdown\n");
   proc_shutdown(proc, proc);
 
-  printf("worker shutdown\n");
+  /* printf("worker shutdown\n"); */
   if( __sync_add_and_fetch(&num_finished, 1) == num_each)
     {
-      printf("shared shutdown %p\n", shared);
+      /* printf("shared shutdown %p\n", shared); */
       proc_shutdown(shared, proc);
     }
 }
@@ -70,9 +72,8 @@ worker(processor_t proc, processor_t shared)
 void
 proc_main(processor_t proc)
 {
-  printf("mutex main\n");
+  printf("mutex main %p\n", proc);
   processor_t shared = proc_new(proc->task->sync_data);
-  
   for (int i = 0; i < num_each; i++)
     {
       printf("creating worker %d\n", i);
@@ -99,7 +100,6 @@ proc_main(processor_t proc)
       priv_queue_routine(q, clos, proc);
       priv_queue_unlock(q, proc);
     }
-
   proc_deref_priv_queues(proc);
 }
 
