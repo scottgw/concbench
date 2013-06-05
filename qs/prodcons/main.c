@@ -48,12 +48,14 @@ is_empty(processor_t proc)
 void
 producer(processor_t proc, processor_t shared)
 {
+  printf("producer %p\n", proc);
   void ***args;
   clos_type_t *arg_types;
   priv_queue_t q = NULL;
 
   for (int i = 0; i < num_iters; i++)
     { 
+      printf("producer logging call %d\n", i);
       q = proc_get_queue(proc, shared);
       closure_t clos =
         closure_new(add_value,
@@ -69,8 +71,11 @@ producer(processor_t proc, processor_t shared)
       *args[1] = i;
 
       priv_queue_lock(q, proc);
+      printf("producer locked queue %d\n", i);
       priv_queue_routine(q, clos, proc);
+      printf("producer enqueued routine %d\n", i);
       priv_queue_unlock(q, proc);
+      printf("producer unlocked queue %d\n", i);
     }
 
   printf("producer pre shutdown\n");
@@ -108,14 +113,19 @@ consumer(processor_t proc, processor_t shared)
       arg_types[0] = closure_pointer_type();
       *args[0] = shared;
 
+      printf("consumer locking queue %d\n", i);
       priv_queue_lock(q, proc);
+      printf("consumer queueing wait func %d\n", i);
       priv_queue_function(q, clos, &val, proc);
 
       while (val == 1)
         {
+          printf("consumer unlocking for retry %d\n", i);
           priv_queue_unlock(q, proc);
+          printf("consumer waiting for change %d\n", i);
           proc_wait_for_available(shared, proc);
 
+          printf("consumer locking for retry %d\n", i);
           priv_queue_lock(q, proc);
           clos =
             closure_new(is_empty,
@@ -126,7 +136,7 @@ consumer(processor_t proc, processor_t shared)
 
           arg_types[0] = closure_pointer_type();
           *args[0] = shared;
-
+          printf("consumer queueing wait func retry %d\n", i);
           priv_queue_function(q, clos, &val, proc);
         }
 
@@ -140,8 +150,9 @@ consumer(processor_t proc, processor_t shared)
 
       arg_types[0] = closure_pointer_type();
       *args[0] = shared;
-
+      printf("consumer queueing func %d\n", i);
       priv_queue_function(q, clos, &val, proc);
+      printf("consumer unlocking final lock %d\n", i);
       priv_queue_unlock(q, proc);
     }
 
@@ -159,11 +170,13 @@ consumer(processor_t proc, processor_t shared)
 void
 proc_main(processor_t proc)
 {
-  processor_t shared = proc_new(proc->task->sync_data);
-  
+  printf("Main processor starting\n");
+  processor_t shared = proc_new(proc->executor);
+
+
   for (int i = 0; i < 2*num_each; i++)
     {
-      processor_t worker_proc = proc_new(proc->task->sync_data);
+      processor_t worker_proc = proc_new(proc->executor);
       priv_queue_t q = proc_get_queue(proc, worker_proc);
       
       void ***args;
@@ -197,10 +210,11 @@ main(int argc, char **argv)
   num_each  = atoi(argv[2]);
   
   queue = g_queue_new();
-  sync_data_t sync_data = sync_data_new(MAX_TASKS);
-  processor_t proc = proc_new_root(sync_data, proc_main);
+  sync_data_t sync_data = sync_data_new(MAX_TASKS, 4);
 
   create_executors(sync_data, 4);
+  executor_t exec = sync_data_random_exec(sync_data);
+  processor_t proc = proc_new_root(exec, proc_main);
 
   {
     notifier_t notifier = notifier_spawn(sync_data);
@@ -209,7 +223,7 @@ main(int argc, char **argv)
 
   join_executors();
 
-  printf ("empty is: %d\n", is_empty(NULL));
+  printf ("queue count: %d\n", g_queue_get_length(queue));
   sync_data_free(sync_data);
   g_queue_free(queue);
   return 0;
