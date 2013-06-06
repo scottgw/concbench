@@ -83,13 +83,14 @@ producer(processor_t proc, processor_t shared)
     }
 
  printf("producer pre shutdown\n");
- proc_shutdown(proc, proc);
+ /* proc_shutdown(proc, proc); */
 
  printf("producer shutdown\n");
  if( __sync_add_and_fetch(&num_finished, 1) == 2*num_each)
    {
+     exit(0);
      printf("shared shutdown %p\n", shared);
-     proc_shutdown(shared, proc);
+     /* proc_shutdown(shared, proc); */
    }
 }
 
@@ -122,7 +123,7 @@ consumer(processor_t proc, processor_t shared)
       /* printf("consumer locking queue %d\n", i); */
       priv_queue_lock(q, proc);
       /* printf("consumer %p queueing wait func %d\n", proc, i); */
-      priv_queue_function(q, clos, &val, shared, proc);
+      priv_queue_function(q, clos, &val, proc);
 
       while (val == 1)
         {
@@ -146,7 +147,7 @@ consumer(processor_t proc, processor_t shared)
           *args[1] = (void*)((int64_t)i);
 
           /* printf("consumer queueing wait func retry %d\n", i); */
-          priv_queue_function(q, clos, &val, shared, proc);
+          priv_queue_function(q, clos, &val, proc);
         }
 
       /* printf("queue not empty, taking\n"); */
@@ -160,19 +161,20 @@ consumer(processor_t proc, processor_t shared)
       arg_types[0] = closure_pointer_type();
       *args[0] = shared;
       /* printf("consumer queueing func %d\n", i); */
-      priv_queue_function(q, clos, &val, shared, proc);
+      priv_queue_function(q, clos, &val, proc);
       /* printf("consumer unlocking final lock %d\n", i); */
       priv_queue_unlock(q, proc);
     }
 
- printf("consumer pre shutdown\n");
- proc_shutdown(proc, proc);
+ /* printf("consumer pre shutdown\n"); */
+ /* proc_shutdown(proc, proc); */
 
  printf("consumer shutdown\n");
  if( __sync_add_and_fetch(&num_finished, 1) == 2*num_each)
    {
+     exit(0);
      printf("shared shutdown %p\n", shared);
-     proc_shutdown(shared, proc);
+     /* proc_shutdown(shared, proc); */
    }
 }
 
@@ -209,7 +211,7 @@ proc_main(processor_t proc)
       priv_queue_unlock(q, proc);
     }
 
-  proc_deref_priv_queues(proc);
+  /* proc_deref_priv_queues(proc); */
 }
 
 int
