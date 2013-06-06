@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <ffi.h>
 #include <glib.h>
+#include <inttypes.h>
 
 #include "libqs/bounded_queue.h"
 #include "libqs/executor.h"
@@ -27,20 +28,21 @@ GQueue *queue;
 volatile int num_finished = 0;
 
 void
-add_value(processor_t proc, int x)
+add_value(processor_t proc, int64_t x)
 {
-  g_queue_push_head(queue, x);
+  g_queue_push_head(queue, (void*)x);
 }
 
-int
+int64_t
 get_value(processor_t proc)
 {
-  return g_queue_pop_tail(queue);
+  return (int64_t)g_queue_pop_tail(queue);
 }
 
 int
-is_empty(processor_t proc)
+is_empty(processor_t proc, int64_t i)
 {
+  /* printf("is_empty: %"PRIu64"\n", i); */
   return g_queue_is_empty(queue);
 }
 
@@ -55,7 +57,7 @@ producer(processor_t proc, processor_t shared)
 
   for (int i = 0; i < num_iters; i++)
     { 
-      printf("producer logging call %d\n", i);
+      /* printf("producer logging call %d\n", i); */
       q = proc_get_queue(proc, shared);
       closure_t clos =
         closure_new(add_value,
@@ -67,26 +69,28 @@ producer(processor_t proc, processor_t shared)
       arg_types[0] = closure_pointer_type();
       arg_types[1] = closure_sint_type();
       
+
+      int64_t ii = i;
       *args[0] = shared;
-      *args[1] = i;
+      *args[1] = (void*)ii;
 
       priv_queue_lock(q, proc);
-      printf("producer locked queue %d\n", i);
+      /* printf("producer locked queue %d\n", i); */
       priv_queue_routine(q, clos, proc);
-      printf("producer enqueued routine %d\n", i);
+      /* printf("producer %p enqueued routine %d\n", proc, i); */
       priv_queue_unlock(q, proc);
-      printf("producer unlocked queue %d\n", i);
+      /* printf("producer unlocked queue %d\n", i); */
     }
 
-  printf("producer pre shutdown\n");
-  proc_shutdown(proc, proc);
+ printf("producer pre shutdown\n");
+ proc_shutdown(proc, proc);
 
-  printf("producer shutdown\n");
-  if( __sync_add_and_fetch(&num_finished, 1) == 2*num_each)
-    {
-      printf("shared shutdown %p\n", shared);
-      proc_shutdown(shared, proc);
-    }
+ printf("producer shutdown\n");
+ if( __sync_add_and_fetch(&num_finished, 1) == 2*num_each)
+   {
+     printf("shared shutdown %p\n", shared);
+     proc_shutdown(shared, proc);
+   }
 }
 
 
@@ -106,38 +110,43 @@ consumer(processor_t proc, processor_t shared)
       clos =
         closure_new(is_empty,
                     closure_sint_type(),
-                    1,
+                    2,
                     &args,
                     &arg_types);
 
       arg_types[0] = closure_pointer_type();
+      arg_types[1] = closure_sint_type();
       *args[0] = shared;
+      *args[1] = (void*)((int64_t)i);
 
-      printf("consumer locking queue %d\n", i);
+      /* printf("consumer locking queue %d\n", i); */
       priv_queue_lock(q, proc);
-      printf("consumer queueing wait func %d\n", i);
-      priv_queue_function(q, clos, &val, proc);
+      /* printf("consumer %p queueing wait func %d\n", proc, i); */
+      priv_queue_function(q, clos, &val, shared, proc);
 
       while (val == 1)
         {
-          printf("consumer unlocking for retry %d\n", i);
+          /* printf("consumer unlocking for retry %d\n", i); */
           priv_queue_unlock(q, proc);
-          printf("consumer waiting for change %d\n", i);
+          /* printf("consumer waiting for change %d\n", i); */
           proc_wait_for_available(shared, proc);
 
-          printf("consumer locking for retry %d\n", i);
+          /* printf("consumer locking for retry %d\n", i); */
           priv_queue_lock(q, proc);
           clos =
             closure_new(is_empty,
                         closure_sint_type(),
-                        1,
+                        2,
                         &args,
                         &arg_types);
 
           arg_types[0] = closure_pointer_type();
+          arg_types[1] = closure_sint_type();
           *args[0] = shared;
-          printf("consumer queueing wait func retry %d\n", i);
-          priv_queue_function(q, clos, &val, proc);
+          *args[1] = (void*)((int64_t)i);
+
+          /* printf("consumer queueing wait func retry %d\n", i); */
+          priv_queue_function(q, clos, &val, shared, proc);
         }
 
       /* printf("queue not empty, taking\n"); */
@@ -150,21 +159,21 @@ consumer(processor_t proc, processor_t shared)
 
       arg_types[0] = closure_pointer_type();
       *args[0] = shared;
-      printf("consumer queueing func %d\n", i);
-      priv_queue_function(q, clos, &val, proc);
-      printf("consumer unlocking final lock %d\n", i);
+      /* printf("consumer queueing func %d\n", i); */
+      priv_queue_function(q, clos, &val, shared, proc);
+      /* printf("consumer unlocking final lock %d\n", i); */
       priv_queue_unlock(q, proc);
     }
 
-  printf("consumer pre shutdown\n");
-  proc_shutdown(proc, proc);
+ printf("consumer pre shutdown\n");
+ proc_shutdown(proc, proc);
 
-  printf("consumer shutdown\n");
-  if( __sync_add_and_fetch(&num_finished, 1) == 2*num_each)
-    {
-      printf("shared shutdown %p\n", shared);
-      proc_shutdown(shared, proc);
-    }
+ printf("consumer shutdown\n");
+ if( __sync_add_and_fetch(&num_finished, 1) == 2*num_each)
+   {
+     printf("shared shutdown %p\n", shared);
+     proc_shutdown(shared, proc);
+   }
 }
 
 void
