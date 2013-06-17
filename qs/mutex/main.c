@@ -59,13 +59,14 @@ worker(processor_t proc, processor_t shared)
       priv_queue_unlock(q, proc);
     }
 
-  proc_shutdown(proc, proc);
+//  proc_shutdown(proc, proc);
 
   /* printf("worker shutdown\n"); */
   if( __sync_add_and_fetch(&num_finished, 1) == num_each)
     {
       /* printf("shared shutdown %p\n", shared); */
-      proc_shutdown(shared, proc);
+  //    proc_shutdown(shared, proc);
+      exit(0);
     }
 }
 

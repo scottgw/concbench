@@ -52,6 +52,8 @@ producer(processor_t proc, processor_t shared)
   clos_type_t *arg_types;
   priv_queue_t q = NULL;
 
+  printf("producer %p\n", proc);
+
   for (int i = 0; i < num_iters; i++)
     { 
       q = proc_get_queue(proc, shared);
@@ -74,13 +76,14 @@ producer(processor_t proc, processor_t shared)
     }
 
   printf("producer pre shutdown\n");
-  proc_shutdown(proc, proc);
+//  proc_shutdown(proc, proc);
 
   printf("producer shutdown\n");
   if( __sync_add_and_fetch(&num_finished, 1) == 2*num_each)
     {
       printf("shared shutdown %p\n", shared);
-      proc_shutdown(shared, proc);
+      exit(0);
+//      proc_shutdown(shared, proc);
     }
 }
 
@@ -98,61 +101,38 @@ consumer(processor_t proc, processor_t shared)
       int val;
       closure_t clos;
       q = proc_get_queue(proc, shared);
-      clos =
-        closure_new(is_empty,
-                    closure_sint_type(),
-                    1,
-                    &args,
-                    &arg_types);
 
-      arg_types[0] = closure_pointer_type();
-      *args[0] = shared;
-
-      priv_queue_lock(q, proc);
-      priv_queue_function(q, clos, &val, proc);
+      /* priv_queue_lock(q, proc); */
+      /* priv_queue_sync(q, proc); */
+      priv_queue_lock_sync(q, proc);
+      val = is_empty(shared);
 
       while (val == 1)
         {
           priv_queue_unlock(q, proc);
           proc_wait_for_available(shared, proc);
 
-          priv_queue_lock(q, proc);
-          clos =
-            closure_new(is_empty,
-                        closure_sint_type(),
-                        1,
-                        &args,
-                        &arg_types);
-
-          arg_types[0] = closure_pointer_type();
-          *args[0] = shared;
-
-          priv_queue_function(q, clos, &val, proc);
+          priv_queue_lock_sync(q, proc);
+          /* priv_queue_lock(q, proc); */
+          /* priv_queue_sync(q, proc); */
+          val = is_empty(shared);
         }
 
       /* printf("queue not empty, taking\n"); */
-      clos =
-        closure_new(get_value,
-                    closure_void_type(),
-                    1,
-                    &args,
-                    &arg_types);
-
-      arg_types[0] = closure_pointer_type();
-      *args[0] = shared;
-
-      priv_queue_function(q, clos, &val, proc);
+      priv_queue_sync(q, proc);
+      val = get_value(shared);
       priv_queue_unlock(q, proc);
     }
 
   printf("consumer pre shutdown\n");
-  proc_shutdown(proc, proc);
+//  proc_shutdown(proc, proc);
 
   printf("consumer shutdown\n");
   if( __sync_add_and_fetch(&num_finished, 1) == 2*num_each)
     {
       printf("shared shutdown %p\n", shared);
-      proc_shutdown(shared, proc);
+      exit(0);
+//      proc_shutdown(shared, proc);
     }
 }
 
@@ -187,7 +167,7 @@ proc_main(processor_t proc)
       priv_queue_unlock(q, proc);
     }
 
-  proc_deref_priv_queues(proc);
+//  proc_deref_priv_queues(proc);
 }
 
 int
@@ -209,7 +189,7 @@ main(int argc, char **argv)
 
   join_executors();
 
-  printf ("empty is: %d\n", is_empty(NULL));
+  printf ("empty is: %d, has %d\n", is_empty(NULL), g_queue_get_length(queue));
   sync_data_free(sync_data);
   g_queue_free(queue);
   return 0;

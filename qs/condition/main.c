@@ -49,19 +49,11 @@ void worker(processor_t proc, processor_t shared, int flag)
       closure_t clos;
       q = proc_get_queue (proc, shared);
 
-      priv_queue_lock(q, proc);
+      /* priv_queue_lock(q, proc); */
+      /* priv_queue_sync(q, proc); */
 
-      clos =
-        closure_new(get_value,
-                    closure_sint_type(),
-                    1,
-                    &args,
-                    &arg_types);
-
-      arg_types[0] = closure_pointer_type();
-      *args[0] = shared;
-
-      priv_queue_function(q, clos, &val, proc);
+      priv_queue_lock_sync(q, proc);
+      val = get_value(shared);
 
       while (val % 2 != flag)
         {
@@ -69,18 +61,11 @@ void worker(processor_t proc, processor_t shared, int flag)
           proc_wait_for_available(shared, proc);
 
           q = proc_get_queue (proc, shared);
-          priv_queue_lock(q, proc);
-          clos =
-            closure_new(get_value,
-                        closure_sint_type(),
-                        1,
-                        &args,
-                        &arg_types);
+          priv_queue_lock_sync(q, proc);
+          /* priv_queue_lock(q, proc); */
+          /* priv_queue_sync(q, proc); */
 
-          arg_types[0] = closure_pointer_type();
-          *args[0] = shared;
-
-          priv_queue_function(q, clos, &val, proc);
+          val = get_value(shared);
         }
 
       clos =
@@ -98,13 +83,14 @@ void worker(processor_t proc, processor_t shared, int flag)
     }
 
   printf("worker pre shutdown\n");
-  proc_shutdown(proc, proc);
+//  proc_shutdown(proc, proc);
 
   printf("worker shutdown\n");
   if( __sync_add_and_fetch(&num_finished, 1) == 2*num_each)
     {
       printf("shared shutdown %p\n", shared);
-      proc_shutdown(shared, proc);
+      exit(0);
+  //  proc_shutdown(shared, proc);
     }
 }
 
