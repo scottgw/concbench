@@ -75,7 +75,6 @@ producer(processor_t proc, processor_t shared)
       priv_queue_unlock(q, proc);
     }
 
-  printf("producer pre shutdown\n");
 //  proc_shutdown(proc, proc);
 
   printf("producer shutdown\n");
@@ -102,19 +101,18 @@ consumer(processor_t proc, processor_t shared)
       closure_t clos;
       q = proc_get_queue(proc, shared);
 
-      /* priv_queue_lock(q, proc); */
-      /* priv_queue_sync(q, proc); */
-      priv_queue_lock_sync(q, proc);
+      priv_queue_lock(q, proc);
+      priv_queue_sync(q, proc);
+
       val = is_empty(shared);
 
       while (val == 1)
         {
           priv_queue_unlock(q, proc);
           proc_wait_for_available(shared, proc);
+          priv_queue_lock(q, proc);
+          priv_queue_sync(q, proc);
 
-          priv_queue_lock_sync(q, proc);
-          /* priv_queue_lock(q, proc); */
-          /* priv_queue_sync(q, proc); */
           val = is_empty(shared);
         }
 
@@ -124,7 +122,6 @@ consumer(processor_t proc, processor_t shared)
       priv_queue_unlock(q, proc);
     }
 
-  printf("consumer pre shutdown\n");
 //  proc_shutdown(proc, proc);
 
   printf("consumer shutdown\n");

@@ -48,8 +48,8 @@ proc_main(processor_t proc)
   for (int i = 0; i < num_each; i++)
     {
       printf("creating worker %d\n", i);
-      processor_t worker_proc = make_processor(proc->task->sync_data);
-      priv_queue_t q = priv_queue_new(worker_proc);
+      processor_t worker_proc = proc_new(proc->task->sync_data);
+      priv_queue_t q = proc_get_queue(proc, worker_proc);
 
       void ***args;
       clos_type_t *arg_types;
@@ -65,11 +65,11 @@ proc_main(processor_t proc)
       
       *args[0] = worker_proc;
 
-      priv_queue_lock(q, worker_proc, proc);
+      priv_queue_lock(q, proc);
       priv_queue_routine(q, clos, proc);
       priv_queue_unlock(q, proc);
 
-      priv_queue_shutdown(q, worker_proc, proc);
+      priv_queue_shutdown(q, proc);
     }
 }
 
@@ -78,7 +78,7 @@ main(int argc, char **argv)
 {
   num_each  = atoi(argv[1]);
   sync_data_t sync_data = sync_data_new(MAX_TASKS);
-  processor_t proc = make_root_processor(sync_data, proc_main);
+  processor_t proc = proc_new_root(sync_data, proc_main);
 
   create_executors(sync_data, 4);
 

@@ -49,10 +49,9 @@ void worker(processor_t proc, processor_t shared, int flag)
       closure_t clos;
       q = proc_get_queue (proc, shared);
 
-      /* priv_queue_lock(q, proc); */
-      /* priv_queue_sync(q, proc); */
+      priv_queue_lock(q, proc);
+      priv_queue_sync(q, proc);
 
-      priv_queue_lock_sync(q, proc);
       val = get_value(shared);
 
       while (val % 2 != flag)
@@ -61,9 +60,8 @@ void worker(processor_t proc, processor_t shared, int flag)
           proc_wait_for_available(shared, proc);
 
           q = proc_get_queue (proc, shared);
-          priv_queue_lock_sync(q, proc);
-          /* priv_queue_lock(q, proc); */
-          /* priv_queue_sync(q, proc); */
+          priv_queue_lock(q, proc);
+          priv_queue_sync(q, proc);
 
           val = get_value(shared);
         }
