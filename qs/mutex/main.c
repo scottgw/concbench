@@ -73,6 +73,7 @@ worker(processor_t proc, processor_t shared)
 void
 proc_main(processor_t proc)
 {
+  proc_step_previous(proc);
   printf("mutex main %p\n", proc);
   processor_t shared = proc_new(proc->task->sync_data);
   for (int i = 0; i < num_each; i++)

@@ -17,6 +17,8 @@
 
 #include "libqs/sync_ops.h"
 
+// #define LOCK_SYNC
+
 #define MAX_TASKS 20000
 
 int num_each;
@@ -101,8 +103,12 @@ consumer(processor_t proc, processor_t shared)
       closure_t clos;
       q = proc_get_queue(proc, shared);
 
+#ifdef LOCK_SYNC
+      priv_queue_lock_sync(q, proc);
+#else
       priv_queue_lock(q, proc);
       priv_queue_sync(q, proc);
+#endif
 
       val = is_empty(shared);
 
@@ -110,8 +116,13 @@ consumer(processor_t proc, processor_t shared)
         {
           priv_queue_unlock(q, proc);
           proc_wait_for_available(shared, proc);
+
+#ifdef LOCK_SYNC
+          priv_queue_lock_sync(q, proc);
+#else
           priv_queue_lock(q, proc);
           priv_queue_sync(q, proc);
+#endif
 
           val = is_empty(shared);
         }
@@ -136,6 +147,7 @@ consumer(processor_t proc, processor_t shared)
 void
 proc_main(processor_t proc)
 {
+  proc_step_previous(proc);
   processor_t shared = proc_new(proc->task->sync_data);
   
   for (int i = 0; i < 2*num_each; i++)
