@@ -8,6 +8,8 @@
 
 #include "libqs/notifier.h"
 #include "libqs/processor.h"
+#include "libqs/task.h"
+#include "libqs/task_mutex.h"
 #include "libqs/private_queue.h"
 
 #include "libqs/sync_ops.h"
