@@ -10,9 +10,10 @@ class
 feature
 	i: INTEGER
 
-	inc
+	set_i (a_i: INTEGER)
 		do
-			i := i + 1
+			i := a_i
+      -- print ("Var: " + i.out + "%N")
 		end
 
 end

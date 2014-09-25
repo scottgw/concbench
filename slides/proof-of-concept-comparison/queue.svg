@@ -23,7 +23,7 @@
         <dc:format>image/svg+xml</dc:format>
         <dc:type
            rdf:resource="http://purl.org/dc/dcmitype/StillImage" />
-        <dc:title />
+        <dc:title></dc:title>
       </cc:Work>
     </rdf:RDF>
   </metadata>
@@ -36,15 +36,15 @@
      guidetolerance="10"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:window-width="1330"
+     inkscape:window-width="1278"
      inkscape:window-height="676"
      id="namedview3182"
      showgrid="false"
      inkscape:zoom="0.67372141"
      inkscape:cx="400.06138"
      inkscape:cy="225.60482"
-     inkscape:window-x="588"
-     inkscape:window-y="205"
+     inkscape:window-x="1375"
+     inkscape:window-y="296"
      inkscape:window-maximized="0"
      inkscape:current-layer="svg3114"
      fit-margin-top="0"
@@ -58,7 +58,10 @@
      y="14.309814"
      x="179.37125"
      font-size="15.00000000000pt"
-     id="shape0">
+     id="shape0"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <tspan
        id="tspan3120"
        y="14.309845"
@@ -70,7 +73,10 @@
      x="126.22125"
      font-size="15.00000000000pt"
      stroke-miterlimit="0.00000000000"
-     id="shape01">
+     id="shape01"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <tspan
        id="tspan3123"
        y="102.89282"
@@ -81,18 +87,24 @@
      y="191.47583"
      x="90.788254"
      font-size="15.00000000000pt"
-     id="shape02">
+     id="shape02"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <tspan
        id="tspan3126"
        y="191.47583"
-       x="90.788254">Processor x</tspan>
+       x="90.788254">Processor z</tspan>
   </text>
   <text
      style="font-size:18.75px;fill:#000000;font-family:ComicSans"
      y="-109.70618"
      x="303.38724"
      font-size="15.00000000000pt"
-     id="shape03">
+     id="shape03"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-naive.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <tspan
        id="tspan3129"
        y="-109.70618"
@@ -103,7 +115,10 @@
      y="-109.70618"
      x="73.071449"
      font-size="15.00000000000pt"
-     id="shape04">
+     id="shape04"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-naive.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <tspan
        id="tspan3132"
        y="-109.70618"
@@ -114,16 +129,22 @@
      y="-109.70618"
      x="445.11926"
      font-size="15.00000000000pt"
-     id="shape05">
+     id="shape05"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-naive.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <tspan
        id="tspan3135"
        y="-109.70618"
-       x="445.11926">Processor x</tspan>
+       x="445.11926">Processor z</tspan>
   </text>
   <g
      style="fill:none"
      transform="translate(-17.977633,-88.829062)"
-     id="group0">
+     id="group0"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-naive.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <rect
        style="fill:#f4a460;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
        y="0"
@@ -200,7 +221,10 @@
   <g
      style="fill:none"
      transform="translate(265.48725,-88.829062)"
-     id="group1">
+     id="group1"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-naive.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <rect
        style="fill:#87cefa;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
        y="0"
@@ -248,11 +272,14 @@
        id="Shape12" />
   </g>
   <g
-     style="fill:none"
+     style="fill:#e9afaf"
      transform="translate(442.65325,-88.829062)"
-     id="group2">
+     id="group2"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-naive.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <rect
-       style="fill:#f4a460;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
+       style="fill:#e9afaf;fill-rule:evenodd;stroke:#000000;stroke-width:1.25000000000000000;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
        y="0"
        x="0"
        height="35.433132"
@@ -261,7 +288,7 @@
        transform="translate(0.883883,0.883883)"
        id="Shape13" />
     <rect
-       style="fill:#f4a460;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
+       style="fill:#e9afaf;fill-rule:evenodd;stroke:#000000;stroke-width:1.25000000000000000;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
        y="0"
        x="0"
        height="35.433132"
@@ -270,7 +297,7 @@
        transform="translate(36.317,0.883883)"
        id="Shape14" />
     <rect
-       style="fill:#f4a460;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
+       style="fill:#e9afaf;fill-rule:evenodd;stroke:#000000;stroke-width:1.25000000000000000;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
        y="0"
        x="0"
        height="35.433132"
@@ -286,11 +313,17 @@
      height="88.582832"
      width="35.433132"
      stroke-miterlimit="2.00000000000"
-     id="Shape16" />
+     id="Shape16"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90" />
   <g
      style="fill:none"
      transform="translate(88.32225,35.18794)"
-     id="group3">
+     id="group3"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <rect
        style="fill:#f4a460;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
        y="0"
@@ -367,7 +400,10 @@
   <g
      style="fill:none"
      transform="translate(88.32225,123.76994)"
-     id="group4">
+     id="group4"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <rect
        style="fill:#87cefa;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
        y="0"
@@ -415,11 +451,14 @@
        id="Shape29" />
   </g>
   <g
-     style="fill:none"
+     style="fill:#e9afaf"
      transform="translate(88.32225,212.35294)"
-     id="group5">
+     id="group5"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90">
     <rect
-       style="fill:#f4a460;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
+       style="fill:#e9afaf;fill-rule:evenodd;stroke:#000000;stroke-width:1.25000000000000000;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
        y="0"
        x="0"
        height="35.433132"
@@ -428,7 +467,7 @@
        transform="translate(0.883883,0.883883)"
        id="Shape30" />
     <rect
-       style="fill:#f4a460;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
+       style="fill:#e9afaf;fill-rule:evenodd;stroke:#000000;stroke-width:1.25000000000000000;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
        y="0"
        x="0"
        height="35.433132"
@@ -437,7 +476,7 @@
        transform="translate(36.317,0.883883)"
        id="Shape31" />
     <rect
-       style="fill:#f4a460;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
+       style="fill:#e9afaf;fill-rule:evenodd;stroke:#000000;stroke-width:1.25000000000000000;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
        y="0"
        x="0"
        height="35.433132"
@@ -453,7 +492,10 @@
      height="88.582832"
      width="35.433132"
      stroke-miterlimit="2.00000000000"
-     id="Shape33" />
+     id="Shape33"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90" />
   <rect
      style="fill:#ffffff;fill-rule:evenodd;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:miter;stroke-miterlimit:2"
      y="89.220947"
@@ -461,20 +503,32 @@
      height="88.582832"
      width="35.433132"
      stroke-miterlimit="2.00000000000"
-     id="Shape34" />
+     id="Shape34"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90" />
   <path
      style="fill:none;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:bevel"
      inkscape:connector-curvature="0"
      d="m 36.05595,61.37032 25,0 1.5748,0 0,-7.58238 1.5749,0 25,0"
-     id="path3178" />
+     id="path3178"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90" />
   <path
      style="fill:none;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:bevel"
      inkscape:connector-curvature="0"
      d="m 36.05595,146.79593 25,0 1.1329,0 0,-5.30899 1.1329,0 25,0"
-     id="shape1" />
+     id="shape1"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90" />
   <path
      style="fill:none;stroke:#000000;stroke-width:1.25;stroke-linecap:square;stroke-linejoin:bevel"
      inkscape:connector-curvature="0"
      d="m 36.05595,233.03138 25,0 1.1329,0 0,-2.96144 1.1329,0 25,0"
-     id="shape2" />
+     id="shape2"
+     inkscape:export-filename="/home/scott/src/sewebsite/people/west/queue-of-queues.png"
+     inkscape:export-xdpi="90"
+     inkscape:export-ydpi="90" />
 </svg>

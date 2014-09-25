@@ -5,13 +5,8 @@
 #include <stdint.h>
 #include <ffi.h>
 
-#include "libqs/bounded_queue.h"
-#include "libqs/executor.h"
 #include "libqs/notifier.h"
 #include "libqs/processor.h"
-#include "libqs/task.h"
-#include "libqs/list.h"
-#include "libqs/task_mutex.h"
 #include "libqs/private_queue.h"
 
 #include "libqs/sync_ops.h"
@@ -51,16 +46,12 @@ void worker(processor_t proc, processor_t shared, int flag)
       closure_t clos;
       q = proc_get_queue (proc, shared);
 
-      /* printf("worker: %p %d\n", proc, i); */
-
-#ifdef LOCK_SYNC
-      priv_queue_lock_sync(q, proc);
-#else
-      /* printf("worker locking: %p\n", proc); */
+      /* printf("worker locking: %p %d\n", proc, i); */
       priv_queue_lock(q, proc);
       /* printf("worker syncing: %p\n", proc); */
       priv_queue_sync(q, proc);
-#endif
+
+      priv_queue_set_in_wait(q);
       val = get_value(shared);
 
       while (val % 2 != flag)
@@ -72,17 +63,14 @@ void worker(processor_t proc, processor_t shared, int flag)
           proc_wait_for_available(shared, proc);
 
           q = proc_get_queue (proc, shared);
-#ifdef LOCK_SYNC
-          priv_queue_lock_sync(q, proc);
-#else
-          /* printf("worker locking: %p\n", proc); */
+          /* printf("worker inner locking: %p\n", proc); */
           priv_queue_lock(q, proc);
           /* printf("worker syncing: %p\n", proc); */
           priv_queue_sync(q, proc);
-#endif
           val = get_value(shared);
         }
-
+      priv_queue_set_in_body(q);
+      /* printf("worker in body: %p\n", proc); */
       clos =
         closure_new(action,
                     closure_void_type(),
@@ -110,17 +98,19 @@ void worker(processor_t proc, processor_t shared, int flag)
     }
 }
 
+processor_t global_shared;
+
 void
 proc_main(processor_t proc)
 {
-  proc_step_previous(proc);
-  processor_t shared = proc_new(proc->task->sync_data);
+  processor_t shared = proc_new_from_other(proc);
+  global_shared = shared;
   printf("root: %p\n", proc);
   printf("shared: %p\n", shared);
   
   for (int i = 0; i < 2*num_each; i++)
     {
-      processor_t worker_proc = proc_new(proc->task->sync_data);
+      processor_t worker_proc = proc_new_from_other(proc);
       /* printf("worker: %p\n", worker_proc); */
       priv_queue_t q = proc_get_queue(proc, worker_proc);
       
@@ -162,14 +152,14 @@ main(int argc, char **argv)
   sync_data_t sync_data = sync_data_new(MAX_TASKS);
   processor_t proc = proc_new_root(sync_data, proc_main);
 
-  create_executors(sync_data, 3);
+  sync_data_create_executors(sync_data, 4);
 
   {
     notifier_t notifier = notifier_spawn(sync_data);
     notifier_join(notifier);
   }
 
-  join_executors();
+  sync_data_join_executors(sync_data);
 
   printf ("x is: %d\n", x);
   sync_data_free(sync_data);

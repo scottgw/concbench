@@ -9,6 +9,8 @@ class
 inherit
   ARGUMENTS
 
+  MEMORY
+
 create
 	make
 
@@ -23,6 +25,7 @@ feature {NONE} -- Initialization
 			i: INTEGER
       max: INTEGER
 		do
+			-- collection_off
       max := argument (1).to_integer_32
       max_workers := argument (2).to_integer_32
 
@@ -71,7 +74,7 @@ feature {NONE} -- Initialization
 
 	wait (worker: separate MUTEX_WORKER)
 		require
-			worker.max_iterations >= 0
+      worker.is_done
 		do
 
 		end

@@ -49,6 +49,13 @@ feature {NONE} -- Initialization
 				i := i + 1
 			end
 
+			from i := 1
+			until i > max_workers
+			loop
+				run_consumer (consumers[i])
+				run_producer (producers[i])
+				i := i + 1
+			end
 
 			wait_producers (producers)
       wait_consumers (consumers)
@@ -78,7 +85,7 @@ feature {NONE} -- Initialization
 		require
 			worker.generator /= Void
 		do
-
+      print ("Consumer done%N")
 		end
 
 
@@ -95,7 +102,7 @@ feature {NONE} -- Initialization
 		require
 			worker.generator /= Void
 		do
-
+      print ("Producer done%N")
 		end
 
 end

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-TIMEOUT=60s
+TIMEOUT=240s
 
 function run_loop {
     EXEC=EIFGENs/$1/F_code/$@

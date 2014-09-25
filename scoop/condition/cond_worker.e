@@ -30,16 +30,24 @@ feature
 			from i := 1
 			until i > num_iterations
 			loop
-				produce_odd (var)
+        -- print ("produce odd " + i.out + "%N")
+        produce_odd (var)
 				i := i + 1
 			end
+      done := True
 		end
 
 	produce_odd (v: separate VAR)
 		require
 			v.i \\ 2 = 1
+    local
+      i: INTEGER
 		do
-			v.inc
+			-- -- print ("Odd: " + v.i.out + "%N")
+      -- print ("odds after wait%N")
+      i := v.i
+      -- print ("odds after fetch%N")
+      v.set_i (v.i + 1)
 		end
 
 	-- Consumers wait for the number in var to be even many times.
@@ -50,15 +58,31 @@ feature
 			from i := 1
 			until i > num_iterations
 			loop
+        -- print ("produce even " + i.out + "%N")
 				consume_even (var)
 				i := i + 1
 			end
+      done := True
 		end
 
 	consume_even (v: separate VAR)
 		require
 			v.i \\ 2 = 0
+    local
+      i: INTEGER
 		do
-			v.inc
+      -- -- print ("Even: " + v.i.out + "%N")
+			-- v.inc
+      -- print ("even after wait%N")
+      i := v.i
+      -- print ("even after fetch%N")
+      v.set_i (i + 1)
 		end
+
+  done: BOOLEAN
+
+  is_done: BOOLEAN
+    do
+      Result := done
+    end
 end

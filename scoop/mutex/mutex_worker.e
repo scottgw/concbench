@@ -19,7 +19,7 @@ feature {NONE}
 
 feature
 	max_iterations: INTEGER
-
+  done: BOOLEAN
 	shared: separate VAR
 
 	live
@@ -32,14 +32,20 @@ feature
 				run (shared)
 				i := i + 1
 			end
+      done := True
 		end
 
+  is_done: BOOLEAN
+    do
+      Result := done
+    end
+
 	run (a_shared: separate VAR)
-    local
-      tmp: separate VAR
+--    local
+--      tmp: separate VAR
 		do
 			a_shared.update_var
-      tmp := a_shared.default
+--      tmp := a_shared.default
 		end
 
 end

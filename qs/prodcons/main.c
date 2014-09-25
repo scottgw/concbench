@@ -6,13 +6,8 @@
 #include <ffi.h>
 #include <glib.h>
 
-#include "libqs/bounded_queue.h"
-#include "libqs/executor.h"
 #include "libqs/notifier.h"
 #include "libqs/processor.h"
-#include "libqs/task.h"
-#include "libqs/list.h"
-#include "libqs/task_mutex.h"
 #include "libqs/private_queue.h"
 
 #include "libqs/sync_ops.h"
@@ -109,7 +104,7 @@ consumer(processor_t proc, processor_t shared)
       priv_queue_lock(q, proc);
       priv_queue_sync(q, proc);
 #endif
-
+      priv_queue_set_in_wait(q);
       val = is_empty(shared);
 
       while (val == 1)
@@ -123,10 +118,9 @@ consumer(processor_t proc, processor_t shared)
           priv_queue_lock(q, proc);
           priv_queue_sync(q, proc);
 #endif
-
           val = is_empty(shared);
         }
-
+      priv_queue_set_in_body(q);
       /* printf("queue not empty, taking\n"); */
       priv_queue_sync(q, proc);
       val = get_value(shared);
@@ -147,12 +141,11 @@ consumer(processor_t proc, processor_t shared)
 void
 proc_main(processor_t proc)
 {
-  proc_step_previous(proc);
-  processor_t shared = proc_new(proc->task->sync_data);
+  processor_t shared = proc_new_from_other(proc);
   
   for (int i = 0; i < 2*num_each; i++)
     {
-      processor_t worker_proc = proc_new(proc->task->sync_data);
+      processor_t worker_proc = proc_new_from_other(proc);
       priv_queue_t q = proc_get_queue(proc, worker_proc);
       
       void ***args;
@@ -189,14 +182,14 @@ main(int argc, char **argv)
   sync_data_t sync_data = sync_data_new(MAX_TASKS);
   processor_t proc = proc_new_root(sync_data, proc_main);
 
-  create_executors(sync_data, 4);
+  sync_data_create_executors(sync_data, 4);
 
   {
     notifier_t notifier = notifier_spawn(sync_data);
     notifier_join(notifier);
   }
 
-  join_executors();
+  sync_data_join_executors(sync_data);
 
   printf ("empty is: %d, has %d\n", is_empty(NULL), g_queue_get_length(queue));
   sync_data_free(sync_data);

@@ -5,15 +5,9 @@
 #include <stdint.h>
 #include <ffi.h>
 
-#include "libqs/bounded_queue.h"
-#include "libqs/executor.h"
 #include "libqs/notifier.h"
 #include "libqs/processor.h"
-#include "libqs/task.h"
-#include "libqs/list.h"
-#include "libqs/task_mutex.h"
 #include "libqs/private_queue.h"
-
 #include "libqs/sync_ops.h"
 
 #define MAX_TASKS 20000
@@ -59,27 +53,21 @@ worker(processor_t proc, processor_t shared)
       priv_queue_unlock(q, proc);
     }
 
-//  proc_shutdown(proc, proc);
-
-  /* printf("worker shutdown\n"); */
   if( __sync_add_and_fetch(&num_finished, 1) == num_each)
     {
-      /* printf("shared shutdown %p\n", shared); */
-  //    proc_shutdown(shared, proc);
-      exit(0);
+      proc_shutdown(shared, proc);
     }
 }
 
 void
 proc_main(processor_t proc)
 {
-  proc_step_previous(proc);
   printf("mutex main %p\n", proc);
-  processor_t shared = proc_new(proc->task->sync_data);
+  processor_t shared = proc_new_from_other(proc);
   for (int i = 0; i < num_each; i++)
     {
       printf("creating worker %d\n", i);
-      processor_t worker_proc = proc_new(proc->task->sync_data);
+      processor_t worker_proc = proc_new_from_other(proc);
       priv_queue_t q = proc_get_queue(proc, worker_proc);
       
       void ***args;
@@ -100,9 +88,9 @@ proc_main(processor_t proc)
 
       priv_queue_lock(q, proc);
       priv_queue_routine(q, clos, proc);
+      proc_shutdown(worker_proc, proc);
       priv_queue_unlock(q, proc);
     }
-  proc_deref_priv_queues(proc);
 }
 
 int
@@ -113,14 +101,14 @@ main(int argc, char **argv)
   sync_data_t sync_data = sync_data_new(MAX_TASKS);
   processor_t proc = proc_new_root(sync_data, proc_main);
 
-  create_executors(sync_data, 4);
+  sync_data_create_executors(sync_data, 4);
 
   {
     notifier_t notifier = notifier_spawn(sync_data);
     notifier_join(notifier);
   }
 
-  join_executors();
+  sync_data_join_executors(sync_data);
 
   printf ("x is: %d\n", x);
   sync_data_free(sync_data);

@@ -1,4 +1,4 @@
-SUBDIRS = stm scala java scoop
+SUBDIRS = stm scala java scoop qs
 
 .PHONY: subdirs $(SUBDIRS)
 

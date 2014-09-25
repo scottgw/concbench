@@ -36,6 +36,7 @@ feature
 
 	run (a_shared: separate SHARED_QUEUE [INTEGER]; i: INTEGER)
 		do
+      -- print ("Producing " + i.out + "%N")
       a_shared.enqueue (i)
 		end
 

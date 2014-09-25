@@ -29,3 +29,9 @@ perf_results.csv
 /speedup-facet.pdf
 /time-facet.pdf
 /slides/proof-of-concept-comparison/queue.odg
+
+# profiling files
+callgrind.*
+perf.data
+perf.data.old
+oprofile_data/

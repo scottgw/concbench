@@ -5,13 +5,13 @@ import time
 import csv
 from subprocess import Popen, call, PIPE
 
-langs=['java', 'scala', 'stm', 'scoop', 'scoop_poc']
+langs=['java', 'scala', 'stm', 'scoop', 'qs'] # 'scoop_poc']
 tasks=['condition', 'mutex', 'noshare', 'prodcons', 'share']
 inputs={'mutex': '20000',
         'condition': '5000',
         'noshare': '',
         'prodcons': '20000',
-        'share': '5000'
+        'share': '20000'
         }
 
 def make_command(lang, task, num_workers):
@@ -52,8 +52,8 @@ def main():
 
     for task in tasks:
         for lang in langs:
-            for thread in [1,2,4,8,16,32]:
-                for i in range(3):
+            for thread in [32]:
+                for i in range(5):
                     run(results, task,lang, thread)
 
     with open('perf_results.csv', 'wb') as csv_file:

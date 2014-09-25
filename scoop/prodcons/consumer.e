@@ -41,6 +41,7 @@ feature
       tmp: INTEGER 
 		do
       tmp := a_shared.dequeue
+      -- print ("consuming: " + tmp.out + "%N")
 		end
 
 end

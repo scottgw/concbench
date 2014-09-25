@@ -6,7 +6,7 @@ create
 feature
   make
     do
-      create q.make (10)
+      create q.make (1000)
     end
 
   enqueue (x: G)
